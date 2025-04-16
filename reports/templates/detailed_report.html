@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <style>
+        /* Tron Legacy Theme Inspired Styling */
+        :root {
+            --deep-black: #000000;
+            --dark-teal-blue: #57A3B7;
+            --neon-cyan: #00FFFF;
+            --light-sky-blue: #BFD4FF;
+            --powder-blue: #BBFEEF;
+            --max-blue-green: #48B3B6;
+            --electric-purple: #3B1AAA;
+            --sunray: #DE945B;
+            --magenta: #B20D58;
+        }
+
+        body {
+            background-color: var(--deep-black);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Tron Grid Background */
+        .tron-grid {
+            pointer-events: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(to right, rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 2px solid var(--neon-cyan);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        h1,
+        h2,
+        h3 {
+            font-family: 'Orbitron', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .report-meta {
+            color: var(--powder-blue);
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+
+        .report-section {
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+
+        .section-title {
+            border-bottom: 1px solid var(--max-blue-green);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .summary-box {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .summary-item {
+            flex: 1;
+            min-width: 200px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--max-blue-green);
+            padding: 15px;
+            margin: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .summary-item h3 {
+            margin-top: 0;
+            color: var(--light-sky-blue);
+        }
+
+        .confidence-meter {
+            width: 100%;
+            height: 30px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            border-radius: 15px;
+            background: linear-gradient(90deg, var(--electric-purple), var(--neon-cyan));
+            transition: width 0.5s ease-in-out;
+            position: relative;
+        }
+
+        .confidence-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+        }
+
+        .media-preview {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .media-preview img,
+        .media-preview video,
+        .media-preview audio {
+            max-width: 100%;
+            border: 2px solid var(--neon-cyan);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .visualization {
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .visualization img {
+            max-width: 100%;
+            border: 2px solid var(--max-blue-green);
+            border-radius: 5px;
+        }
+
+        .metadata-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .metadata-table th,
+        .metadata-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--dark-teal-blue);
+        }
+
+        .metadata-table th {
+            background-color: rgba(72, 179, 182, 0.2);
+            color: var(--neon-cyan);
+        }
+
+        .metadata-table tr:hover {
+            background-color: rgba(72, 179, 182, 0.1);
+        }
+
+        .detection-details {
+            margin-top: 30px;
+        }
+
+        .detection-timeline {
+            width: 100%;
+            height: 100px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--max-blue-green);
+            border-radius: 5px;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .timeline-marker {
+            position: absolute;
+            height: 100%;
+            background-color: rgba(222, 148, 91, 0.7);
+            border-right: 2px solid var(--sunray);
+        }
+
+        .verdict-authentic {
+            color: #4CAF50;
+        }
+
+        .verdict-deepfake {
+            color: #FF5252;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding: 20px;
+            font-size: 0.8em;
+            color: var(--powder-blue);
+            border-top: 1px solid var(--max-blue-green);
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .summary-box {
+                flex-direction: column;
+            }
+
+            .summary-item {
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Tron Grid Background -->
+    <div class="tron-grid"></div>
+
+    <div class="container">
+        <header>
+            <h1>{{ report_title }}</h1>
+            <div class="report-meta">
+                <p>Analysis Date: {{ analysis_date }}</p>
+                <p>Report ID: {{ report_id }}</p>
+            </div>
+        </header>
+
+        <!-- Overall Summary Section -->
+        <section class="report-section">
+            <h2 class="section-title">Overall Analysis Summary</h2>
+
+            <div class="summary-box">
+                <div class="summary-item">
+                    <h3>Final Verdict</h3>
+                    {% if verdict == 'authentic' %}
+                    <p class="verdict-authentic">AUTHENTIC</p>
+                    {% else %}
+                    <p class="verdict-deepfake">DEEPFAKE</p>
+                    {% endif %}
+                </div>
+
+                <div class="summary-item">
+                    <h3>Confidence Score</h3>
+                    <div class="confidence-meter">
+                        <div class="confidence-fill" style="width: {{ confidence }}%;">
+                            <span class="confidence-value">{{ confidence }}%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="summary-item">
+                    <h3>Media Type</h3>
+                    <p>{{ media_type }}</p>
+                </div>
+            </div>
+
+            <div class="media-preview">
+                {% if media_type == 'image' %}
+                <img src="{{ media_path }}" alt="Analyzed Image">
+                {% elif media_type == 'video' %}
+                <video controls width="600">
+                    <source src="{{ media_path }}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                {% elif media_type == 'audio' %}
+                <audio controls>
+                    <source src="{{ media_path }}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Detection Details Section -->
+        <section class="report-section">
+            <h2 class="section-title">Detection Details</h2>
+
+            {% if media_type == 'image' %}
+            <!-- Image-specific details -->
+            <div class="visualization">
+                <h3>Detection Heatmap</h3>
+                <img src="{{ heatmap_path }}" alt="Detection Heatmap">
+            </div>
+
+            <div class="detection-details">
+                <h3>Analysis Metrics</h3>
+                <table class="metadata-table">
+                    <tr>
+                        <th>Detector</th>
+                        <th>Confidence</th>
+                        <th>Verdict</th>
+                    </tr>
+                    {% for detector in detectors %}
+                    <tr>
+                        <td>{{ detector.name }}</td>
+                        <td>{{ detector.confidence }}%</td>
+                        <td>{{ detector.verdict }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            {% endif %}
+
+            {% if media_type == 'audio' %}
+            <!-- Audio-specific details -->
+            <div class="visualization">
+                <h3>Audio Spectrogram</h3>
+                <img src="{{ spectrogram_path }}" alt="Audio Spectrogram">
+            </div>
+
+            <div class="detection-details">
+                <h3>Audio Analysis Metrics</h3>
+                <table class="metadata-table">
+                    <tr>
+                        <th>Detector</th>
+                        <th>Confidence</th>
+                        <th>Verdict</th>
+                    </tr>
+                    {% for detector in detectors %}
+                    <tr>
+                        <td>{{ detector.name }}</td>
+                        <td>{{ detector.confidence }}%</td>
+                        <td>{{ detector.verdict }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            {% endif %}
+
+            {% if media_type == 'video' %}
+            <!-- Video-specific details -->
+            <div class="visualization">
+                <h3>Detection Frames</h3>
+                <img src="{{ frames_path }}" alt="Detection Frames">
+            </div>
+
+            <div class="detection-timeline">
+                {% for marker in timeline_markers %}
+                <div class="timeline-marker" style="left: {{ marker.position }}%; width: {{ marker.width }}%;"
+                    title="{{ marker.description }}"></div>
+                {% endfor %}
+            </div>
+
+            <div class="detection-details">
+                <h3>Video Analysis Metrics</h3>
+                <table class="metadata-table">
+                    <tr>
+                        <th>Detector</th>
+                        <th>Confidence</th>
+                        <th>Verdict</th>
+                    </tr>
+                    {% for detector in detectors %}
+                    <tr>
+                        <td>{{ detector.name }}</td>
+                        <td>{{ detector.confidence }}%</td>
+                        <td>{{ detector.verdict }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Technical Metadata Section -->
+        <section class="report-section">
+            <h2 class="section-title">Technical Metadata</h2>
+
+            <table class="metadata-table">
+                <tr>
+                    <th>Property</th>
+                    <th>Value</th>
+                </tr>
+                {% for key, value in metadata.items() %}
+                <tr>
+                    <td>{{ key }}</td>
+                    <td>{{ value }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </section>
+
+        <!-- Analysis Methods Section -->
+        <section class="report-section">
+            <h2 class="section-title">Analysis Methods</h2>
+
+            <div class="detection-details">
+                <h3>Detectors Used</h3>
+                <ul>
+                    {% for detector in detectors %}
+                    <li>
+                        <strong>{{ detector.name }}</strong>
+                        <p>{{ detector.description }}</p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+
+        <footer>
+            <p>Generated by Deepfake Detection Platform</p>
+            <p>Report ID: {{ report_id }} | Date: {{ analysis_date }}</p>
+        </footer>
+    </div>
+</body>
+
+</html>

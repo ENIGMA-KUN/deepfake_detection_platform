@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <style>
+        /* Tron Legacy Theme Inspired Styling */
+        :root {
+            --deep-black: #000000;
+            --dark-teal-blue: #57A3B7;
+            --neon-cyan: #00FFFF;
+            --light-sky-blue: #BFD4FF;
+            --powder-blue: #BBFEEF;
+            --max-blue-green: #48B3B6;
+            --electric-purple: #3B1AAA;
+            --sunray: #DE945B;
+            --magenta: #B20D58;
+        }
+        
+        body {
+            background-color: var(--deep-black);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        /* Tron Grid Background */
+        .tron-grid {
+            pointer-events: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(to right, rgba(0, 255, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+            z-index: -1;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            border-bottom: 2px solid var(--neon-cyan);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        h1, h2, h3 {
+            font-family: 'Orbitron', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .report-meta {
+            color: var(--powder-blue);
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+        
+        .report-section {
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+        }
+        
+        .section-title {
+            border-bottom: 1px solid var(--max-blue-green);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .verdict-box {
+            text-align: center;
+            padding: 30px;
+            margin: 20px 0;
+            border-radius: 10px;
+            border: 2px solid var(--neon-cyan);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        .verdict-authentic {
+            background-color: rgba(76, 175, 80, 0.1);
+            border-color: #4CAF50;
+        }
+        
+        .verdict-authentic h2 {
+            color: #4CAF50;
+            text-shadow: 0 0 10px rgba(76, 175, 80, 0.7);
+        }
+        
+        .verdict-deepfake {
+            background-color: rgba(255, 82, 82, 0.1);
+            border-color: #FF5252;
+        }
+        
+        .verdict-deepfake h2 {
+            color: #FF5252;
+            text-shadow: 0 0 10px rgba(255, 82, 82, 0.7);
+        }
+        
+        .confidence-meter {
+            width: 100%;
+            height: 30px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            border-radius: 15px;
+            background: linear-gradient(90deg, var(--electric-purple), var(--neon-cyan));
+            transition: width 0.5s ease-in-out;
+            position: relative;
+        }
+        
+        .confidence-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+        }
+        
+        .result-summary {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        
+        .summary-item {
+            flex: 1;
+            min-width: 200px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--max-blue-green);
+            padding: 15px;
+            margin: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        
+        .summary-item h3 {
+            margin-top: 0;
+            color: var(--light-sky-blue);
+        }
+        
+        .files-analyzed {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .files-analyzed th, .files-analyzed td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--dark-teal-blue);
+        }
+        
+        .files-analyzed th {
+            background-color: rgba(72, 179, 182, 0.2);
+            color: var(--neon-cyan);
+        }
+        
+        .files-analyzed tr:hover {
+            background-color: rgba(72, 179, 182, 0.1);
+        }
+        
+        .file-name {
+            font-weight: bold;
+        }
+        
+        .file-verdict {
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .verdict-icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        
+        .verdict-icon.authentic {
+            background-color: #4CAF50;
+            box-shadow: 0 0 5px #4CAF50;
+        }
+        
+        .verdict-icon.deepfake {
+            background-color: #FF5252;
+            box-shadow: 0 0 5px #FF5252;
+        }
+        
+        .batch-statistics {
+            margin-top: 30px;
+        }
+        
+        .statistics-chart {
+            width: 100%;
+            height: 300px;
+            margin: 20px 0;
+            border: 1px solid var(--max-blue-green);
+            border-radius: 5px;
+            background-color: rgba(0, 0, 0, 0.3);
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding: 20px;
+            font-size: 0.8em;
+            color: var(--powder-blue);
+            border-top: 1px solid var(--max-blue-green);
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .result-summary {
+                flex-direction: column;
+            }
+            
+            .summary-item {
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Tron Grid Background -->
+    <div class="tron-grid"></div>
+    
+    <div class="container">
+        <header>
+            <h1>{{ report_title }}</h1>
+            <div class="report-meta">
+                <p>Analysis Date: {{ analysis_date }}</p>
+                <p>Report ID: {{ report_id }}</p>
+            </div>
+        </header>
+        
+        <!-- Overall Summary Section -->
+        <section class="report-section">
+            <h2 class="section-title">Analysis Summary</h2>
+            
+            {% if batch_analysis %}
+            <!-- Batch analysis summary -->
+            <div class="result-summary">
+                <div class="summary-item">
+                    <h3>Total Files Analyzed</h3>
+                    <p>{{ total_files }}</p>
+                </div>
+                
+                <div class="summary-item">
+                    <h3>Authentic Files</h3>
+                    <p>{{ authentic_files }} ({{ authentic_percentage }}%)</p>
+                </div>
+                
+                <div class="summary-item">
+                    <h3>Deepfake Files</h3>
+                    <p>{{ deepfake_files }} ({{ deepfake_percentage }}%)</p>
+                </div>
+                
+                <div class="summary-item">
+                    <h3>Average Confidence</h3>
+                    <p>{{ average_confidence }}%</p>
+                </div>
+            </div>
+            {% else %}
+            <!-- Single file analysis summary -->
+            <div class="verdict-box {% if verdict == 'authentic' %}verdict-authentic{% else %}verdict-deepfake{% endif %}">
+                <h2>{{ verdict|upper }}</h2>
+                <p>Confidence Score:</p>
+                <div class="confidence-meter">
+                    <div class="confidence-fill" style="width: {{ confidence }}%;">
+                        <span class="confidence-value">{{ confidence }}%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="result-summary">
+                <div class="summary-item">
+                    <h3>Media Type</h3>
+                    <p>{{ media_type }}</p>
+                </div>
+                
+                <div class="summary-item">
+                    <h3>Filename</h3>
+                    <p>{{ filename }}</p>
+                </div>
+                
+                <div class="summary-item">
+                    <h3>Analysis Duration</h3>
+                    <p>{{ analysis_duration }} seconds</p>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+        
+        {% if batch_analysis %}
+        <!-- Files Analyzed Section (for batch analysis) -->
+        <section class="report-section">
+            <h2 class="section-title">Files Analyzed</h2>
+            
+            <table class="files-analyzed">
+                <tr>
+                    <th>File</th>
+                    <th>Type</th>
+                    <th>Verdict</th>
+                    <th>Confidence</th>
+                    <th>View Detailed Report</th>
+                </tr>
+                {% for file in files %}
+                <tr>
+                    <td class="file-name">{{ file.name }}</td>
+                    <td>{{ file.type }}</td>
+                    <td class="file-verdict">
+                        <span class="verdict-icon {{ file.verdict }}"></span>
+                        {{ file.verdict|upper }}
+                    </td>
+                    <td>{{ file.confidence }}%</td>
+                    <td><a href="{{ file.detailed_report_url }}" target="_blank" style="color: var(--neon-cyan);">View Report</a></td>
+                </tr>
+                {% endfor %}
+            </table>
+            
+            <div class="batch-statistics">
+                <h3>Detection Statistics</h3>
+                <div class="statistics-chart">
+                    <!-- Placeholder for dynamic chart (to be implemented with JavaScript) -->
+                    <!-- This would be populated programmatically when generating the report -->
+                </div>
+            </div>
+        </section>
+        {% endif %}
+        
+        <!-- Analysis Methods Section -->
+        <section class="report-section">
+            <h2 class="section-title">Analysis Methods</h2>
+            
+            <p>This analysis was performed using the Deepfake Detection Platform, which employs advanced machine learning models to detect manipulated media.</p>
+            
+            <div class="result-summary">
+                {% for detector in detectors %}
+                <div class="summary-item">
+                    <h3>{{ detector.name }}</h3>
+                    <p>{{ detector.description }}</p>
+                    {% if not batch_analysis %}
+                    <p>Confidence: {{ detector.confidence }}%</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        
+        <footer>
+            <p>Generated by Deepfake Detection Platform</p>
+            <p>Report ID: {{ report_id }} | Date: {{ analysis_date }}</p>
+            {% if not batch_analysis %}
+            <p><a href="{{ detailed_report_url }}" target="_blank" style="color: var(--neon-cyan);">View Detailed Report</a></p>
+            {% endif %}
+        </footer>
+    </div>
+</body>
+</html>
