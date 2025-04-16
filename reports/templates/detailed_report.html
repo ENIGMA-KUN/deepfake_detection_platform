@@ -5,321 +5,173 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} - Deepfake Detection Report</title>
     <style>
+        /* Tron Legacy inspired theme */
         :root {
             --deep-black: #000000;
-            --dark-blue: #0C141F;
-            --grid-blue: #102542;
-            --glow-blue: #4CC9F0;
-            --bright-blue: #4361EE;
-            --purple: #3A0CA3;
-            --magenta: #F72585;
-            --text-blue: #CDE7FB;
-            --authentic-green: #0AFF16;
-            --deepfake-red: #F72585;
-            --uncertain-yellow: #FCA311;
+            --bg-dark: #0a1017;
+            --bg-medium: #0f1924;
+            --tron-blue: #4CC9F0;
+            --tron-blue-glow: #4CC9F0;
+            --tron-blue-dark: #1E5F75;
+            --text-light: #FFFFFF;
+            --text-medium: #DDDDDD;
+            --text-muted: #96A1AD;
+            --danger-red: #F72585;
+            --success-green: #0AFF16;
+            --warning-yellow: #F8F32B;
         }
-
+        
         body {
-            font-family: 'Arial', sans-serif;
-            line-height: 1.6;
-            color: var(--text-blue);
-            background-color: var(--deep-black);
-            background-image: 
-                linear-gradient(0deg, rgba(12, 20, 31, 0.5) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(12, 20, 31, 0.5) 1px, transparent 1px);
-            background-size: 30px 30px;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
             margin: 0;
             padding: 0;
         }
-
+        
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
         }
-
-        .report-header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding: 20px;
-            border-bottom: 1px solid var(--glow-blue);
-            position: relative;
+        
+        header {
+            background-color: var(--deep-black);
+            border-bottom: 2px solid var(--tron-blue);
+            box-shadow: 0 0 20px rgba(76, 201, 240, 0.3);
+            padding: 20px 0;
+            margin-bottom: 30px;
         }
-
-        .report-header::after {
-            content: '';
-            position: absolute;
-            height: 1px;
-            width: 100%;
-            bottom: -5px;
-            left: 0;
-            background: var(--glow-blue);
-            box-shadow: 0 0 10px var(--glow-blue);
+        
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--tron-blue);
+            margin-top: 0;
         }
-
-        .report-logo {
-            max-width: 200px;
-            margin-bottom: 20px;
-        }
-
-        h1, h2, h3, h4 {
-            color: var(--glow-blue);
-            text-shadow: 0 0 5px rgba(76, 201, 240, 0.5);
-        }
-
+        
         h1 {
-            font-size: 28px;
-            letter-spacing: 2px;
+            text-align: center;
             text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px var(--tron-blue-glow);
         }
-
-        h2 {
-            font-size: 24px;
-            margin-top: 40px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--grid-blue);
-        }
-
-        h3 {
-            font-size: 20px;
-            margin-top: 30px;
-        }
-
-        .verdict {
-            display: inline-block;
-            padding: 10px 20px;
-            font-size: 24px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin: 20px 0;
+        
+        .verdict-box {
+            padding: 20px;
             border-radius: 5px;
+            margin-bottom: 30px;
+            text-align: center;
         }
-
-        .verdict.deepfake {
-            background-color: rgba(247, 37, 133, 0.2);
-            color: var(--deepfake-red);
-            border: 1px solid var(--deepfake-red);
+        
+        .deepfake {
+            background-color: rgba(247, 37, 133, 0.1);
+            border: 1px solid var(--danger-red);
         }
-
-        .verdict.authentic {
-            background-color: rgba(10, 255, 22, 0.2);
-            color: var(--authentic-green);
-            border: 1px solid var(--authentic-green);
+        
+        .authentic {
+            background-color: rgba(10, 255, 22, 0.1);
+            border: 1px solid var(--success-green);
         }
-
-        .confidence-container {
-            margin: 30px 0;
+        
+        .verdict-text {
+            font-size: 28px;
+            font-weight: bold;
+            margin: 10px 0;
         }
-
+        
+        .deepfake .verdict-text {
+            color: var(--danger-red);
+            text-shadow: 0 0 10px rgba(247, 37, 133, 0.5);
+        }
+        
+        .authentic .verdict-text {
+            color: var(--success-green);
+            text-shadow: 0 0 10px rgba(10, 255, 22, 0.5);
+        }
+        
         .confidence-meter {
             height: 20px;
-            background-color: var(--dark-blue);
+            background-color: #333;
             border-radius: 10px;
-            margin: 10px 0;
-            position: relative;
+            margin: 20px 0;
             overflow: hidden;
+            position: relative;
         }
-
+        
         .confidence-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--authentic-green) 0%, var(--uncertain-yellow) 50%, var(--deepfake-red) 100%);
             position: absolute;
             top: 0;
             left: 0;
+            background: linear-gradient(90deg, var(--success-green) 0%, var(--warning-yellow) 50%, var(--danger-red) 100%);
         }
-
-        .confidence-threshold {
-            position: absolute;
-            height: 100%;
-            border-right: 2px dashed white;
-            top: 0;
-            z-index: 1;
-        }
-
+        
         .metadata {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 30px 0;
-        }
-
-        .metadata-item {
-            background-color: rgba(16, 37, 66, 0.5);
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid var(--grid-blue);
-        }
-
-        .metadata-label {
-            font-weight: bold;
-            margin-bottom: 5px;
-            color: var(--glow-blue);
-        }
-
-        .visualization-container {
-            margin: 40px 0;
-            text-align: center;
-        }
-
-        .visualization-image {
-            max-width: 100%;
-            max-height: 500px;
-            border: 1px solid var(--grid-blue);
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-        }
-
-        .analysis-section {
-            background-color: rgba(12, 20, 31, 0.8);
-            border: 1px solid var(--grid-blue);
-            border-radius: 5px;
+            background-color: var(--bg-medium);
             padding: 20px;
-            margin: 30px 0;
+            border-radius: 5px;
+            margin-bottom: 30px;
+            border: 1px solid var(--tron-blue-dark);
         }
-
-        table {
+        
+        .metadata table {
             width: 100%;
             border-collapse: collapse;
-            margin: 20px 0;
-            color: var(--text-blue);
-            background-color: rgba(12, 20, 31, 0.5);
-            border: 1px solid var(--grid-blue);
         }
-
-        th {
-            background-color: var(--grid-blue);
-            color: var(--glow-blue);
-            border-bottom: 2px solid var(--glow-blue);
-            text-transform: uppercase;
+        
+        .metadata table td, .metadata table th {
             padding: 10px;
+            border-bottom: 1px solid var(--tron-blue-dark);
+        }
+        
+        .metadata table th {
             text-align: left;
+            color: var(--tron-blue);
         }
-
-        td {
-            padding: 10px;
-            border-top: 1px solid var(--grid-blue);
-        }
-
-        tr:hover {
-            background-color: rgba(76, 201, 240, 0.1);
-        }
-
-        .frame-gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 30px 0;
-        }
-
-        .frame-item {
-            border: 1px solid var(--grid-blue);
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: var(--bg-medium);
             border-radius: 5px;
-            overflow: hidden;
-            background-color: rgba(12, 20, 31, 0.5);
+            border: 1px solid var(--tron-blue-dark);
         }
-
-        .frame-header {
-            background-color: var(--grid-blue);
-            color: var(--text-blue);
-            padding: 10px;
-            font-weight: bold;
+        
+        .visualizations img {
+            max-width: 100%;
+            margin-bottom: 20px;
+            border: 1px solid var(--tron-blue-dark);
+            border-radius: 5px;
+        }
+        
+        .model-info {
             display: flex;
             justify-content: space-between;
+            flex-wrap: wrap;
         }
-
-        .frame-score {
-            color: var(--glow-blue);
+        
+        .model-info div {
+            flex-basis: 48%;
+            margin-bottom: 20px;
         }
-
-        .frame-score.deepfake {
-            color: var(--deepfake-red);
+        
+        @media (max-width: 768px) {
+            .model-info div {
+                flex-basis: 100%;
+            }
         }
-
-        .frame-score.authentic {
-            color: var(--authentic-green);
-        }
-
-        .frame-image {
-            width: 100%;
-            height: auto;
-        }
-
-        .report-footer {
-            margin-top: 60px;
-            padding-top: 20px;
-            border-top: 1px solid var(--grid-blue);
+        
+        footer {
             text-align: center;
-            font-size: 14px;
-            color: var(--text-blue);
-        }
-
-        .media-player {
-            width: 100%;
-            margin: 20px 0;
-        }
-
-        .chart-container {
-            margin: 30px 0;
-            height: 300px;
-        }
-
-        @media print {
-            body {
-                background: #fff;
-                color: #000;
-            }
-            
-            .container {
-                max-width: none;
-                padding: 0;
-            }
-            
-            h1, h2, h3, h4 {
-                color: #1976D2;
-                text-shadow: none;
-            }
-            
-            .verdict.deepfake {
-                background-color: rgba(247, 37, 133, 0.1);
-                color: #D32F2F;
-                border: 1px solid #D32F2F;
-            }
-            
-            .verdict.authentic {
-                background-color: rgba(10, 255, 22, 0.1);
-                color: #388E3C;
-                border: 1px solid #388E3C;
-            }
-            
-            .metadata-item, .analysis-section {
-                background-color: #f9f9f9;
-                border: 1px solid #ddd;
-            }
-            
-            table {
-                color: #000;
-                background-color: #fff;
-                border: 1px solid #ddd;
-            }
-            
-            th {
-                background-color: #f2f2f2;
-                color: #333;
-                border-bottom: 2px solid #ddd;
-            }
-            
-            td {
-                border-top: 1px solid #ddd;
-            }
-            
-            tr:hover {
-                background-color: #f5f5f5;
-            }
+            padding: 20px 0;
+            background-color: var(--bg-medium);
+            border-top: 1px solid var(--tron-blue);
+            margin-top: 30px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <header class="report-header">
+        <header>
             <img src="{{ logo_path }}" alt="Deepfake Detection Platform Logo" class="report-logo">
             <h1>Deepfake Detection Report</h1>
             <p>Generated on: {{ generation_date }}</p>
@@ -328,8 +180,8 @@
         <section class="summary-section">
             <h2>Analysis Summary</h2>
             
-            <div class="verdict {{ 'deepfake' if is_deepfake else 'authentic' }}">
-                {{ "DEEPFAKE DETECTED" if is_deepfake else "AUTHENTIC" }}
+            <div class="verdict-box {{ 'deepfake' if is_deepfake else 'authentic' }}">
+                <div class="verdict-text">{{ "DEEPFAKE DETECTED" if is_deepfake else "AUTHENTIC" }}</div>
             </div>
             
             <div class="confidence-container">
@@ -344,22 +196,24 @@
             </div>
             
             <div class="metadata">
-                <div class="metadata-item">
-                    <div class="metadata-label">Media Type</div>
-                    <div>{{ media_type|title }}</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Analysis Date</div>
-                    <div>{{ generation_date }}</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Analysis Time</div>
-                    <div>{{ analysis_time|round(3) }} seconds</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Model Used</div>
-                    <div>{{ model }}</div>
-                </div>
+                <table>
+                    <tr>
+                        <th>Media Type</th>
+                        <td>{{ media_type|title }}</td>
+                    </tr>
+                    <tr>
+                        <th>Analysis Date</th>
+                        <td>{{ generation_date }}</td>
+                    </tr>
+                    <tr>
+                        <th>Analysis Time</th>
+                        <td>{{ analysis_time|round(3) }} seconds</td>
+                    </tr>
+                    <tr>
+                        <th>Model Used</th>
+                        <td>{{ model }}</td>
+                    </tr>
+                </table>
             </div>
         </section>
 
@@ -418,14 +272,16 @@
             <h2>Audio Analysis</h2>
             
             <div class="metadata">
-                <div class="metadata-item">
-                    <div class="metadata-label">Original Sample Rate</div>
-                    <div>{{ details.original_sample_rate }} Hz</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Duration</div>
-                    <div>{{ details.duration|round(2) }} seconds</div>
-                </div>
+                <table>
+                    <tr>
+                        <th>Original Sample Rate</th>
+                        <td>{{ details.original_sample_rate }} Hz</td>
+                    </tr>
+                    <tr>
+                        <th>Duration</th>
+                        <td>{{ details.duration|round(2) }} seconds</td>
+                    </tr>
+                </table>
             </div>
             
             {% if secondary_visualization %}
@@ -468,22 +324,24 @@
             <h2>Video Analysis</h2>
             
             <div class="metadata">
-                <div class="metadata-item">
-                    <div class="metadata-label">Duration</div>
-                    <div>{{ details.video_info.duration|round(2) }} seconds</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Resolution</div>
-                    <div>{{ details.video_info.width }} x {{ details.video_info.height }}</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Original FPS</div>
-                    <div>{{ details.video_info.fps|round(2) }}</div>
-                </div>
-                <div class="metadata-item">
-                    <div class="metadata-label">Frames Analyzed</div>
-                    <div>{{ details.frames_analyzed }}</div>
-                </div>
+                <table>
+                    <tr>
+                        <th>Duration</th>
+                        <td>{{ details.video_info.duration|round(2) }} seconds</td>
+                    </tr>
+                    <tr>
+                        <th>Resolution</th>
+                        <td>{{ details.video_info.width }} x {{ details.video_info.height }}</td>
+                    </tr>
+                    <tr>
+                        <th>Original FPS</th>
+                        <td>{{ details.video_info.fps|round(2) }}</td>
+                    </tr>
+                    <tr>
+                        <th>Frames Analyzed</th>
+                        <td>{{ details.frames_analyzed }}</td>
+                    </tr>
+                </table>
             </div>
             
             {% if secondary_visualization %}
@@ -558,7 +416,7 @@
             </table>
         </section>
 
-        <footer class="report-footer">
+        <footer>
             <p> {{ generation_date.split('-')[0] }} Deepfake Detection Platform</p>
             <p>This report was automatically generated. For more information, visit the platform dashboard.</p>
         </footer>
