@@ -1,408 +1,666 @@
+"""
+Visualization utilities for the Deepfake Detection Platform.
+Provides functions for visualizing detection results for different media types.
+"""
 import os
+import logging
 import numpy as np
+import cv2
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from PIL import Image, ImageDraw, ImageFont
-import cv2
-from typing import Dict, List, Tuple, Union, Optional, Any
-import json
+from matplotlib.colors import Normalize
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 import base64
 from io import BytesIO
-import logging
-from pathlib import Path
+from typing import Dict, Any, List, Tuple, Optional, Union
+from PIL import Image, ImageDraw, ImageFont
 
-# Set up logger
-logger = logging.getLogger(__name__)
-
-# Constants for visualization
-DEFAULT_HEATMAP_COLORMAP = 'inferno'
-DEFAULT_CONFIDENCE_COLORS = {
-    'high': '#00FF00',  # Green for high confidence (authentic)
-    'medium': '#FFFF00',  # Yellow for medium confidence
-    'low': '#FF0000'  # Red for low confidence (deepfake)
-}
-DEFAULT_FONT = None  # Will try to find a system font
-
-# Utility to encode images as base64 for web display
-def encode_image_base64(img_array: np.ndarray) -> str:
+class VisualizationManager:
     """
-    Encode an image as base64 for embedding in HTML.
+    Manager class for visualization of deepfake detection results.
+    Provides methods for visualizing different media types and results.
+    """
+    
+    def __init__(self, output_dir: str = None, 
+                theme: str = "tron_legacy",
+                dpi: int = 100):
+        """
+        Initialize the visualization manager.
+        
+        Args:
+            output_dir: Directory to save visualization outputs
+            theme: Visual theme to use ('tron_legacy', 'default', etc.)
+            dpi: DPI for saved images
+        """
+        self.logger = logging.getLogger(__name__)
+        
+        # Set output directory
+        if output_dir is None:
+            output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                                    'reports', 'output')
+        
+        os.makedirs(output_dir, exist_ok=True)
+        self.output_dir = output_dir
+        
+        # Set theme-specific colors
+        self.theme = theme
+        self.dpi = dpi
+        
+        if theme == "tron_legacy":
+            self.colors = {
+                "background": "#000000",
+                "grid": "#0C141F",
+                "primary": "#4CC9F0",
+                "secondary": "#4361EE",
+                "accent": "#3A0CA3",
+                "text": "#CDE7FB",
+                "authentic": "#0AFF16",
+                "deepfake": "#F72585",
+                "uncertain": "#FCA311"
+            }
+        else:
+            # Default color scheme
+            self.colors = {
+                "background": "#FFFFFF",
+                "grid": "#E0E0E0",
+                "primary": "#1976D2",
+                "secondary": "#388E3C",
+                "accent": "#FBC02D",
+                "text": "#212121",
+                "authentic": "#00C853",
+                "deepfake": "#D32F2F",
+                "uncertain": "#FF9800"
+            }
+            
+        self.logger.info(f"VisualizationManager initialized with theme: {theme}")
+    
+    def create_detection_overlay(self, image: Union[str, np.ndarray, Image.Image], 
+                               detection_result: Dict[str, Any]) -> Image.Image:
+        """
+        Create a visual overlay on an image showing deepfake detection results.
+        
+        Args:
+            image: Image file path, numpy array, or PIL Image
+            detection_result: Detection result dictionary from detector
+            
+        Returns:
+            PIL Image with detection visualization overlay
+        """
+        # Load image if needed
+        if isinstance(image, str):
+            img = Image.open(image).convert("RGB")
+        elif isinstance(image, np.ndarray):
+            img = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        elif isinstance(image, Image.Image):
+            img = image.copy()
+        else:
+            raise ValueError("Unsupported image type")
+        
+        # Create a draw object
+        draw = ImageDraw.Draw(img)
+        
+        # Get image dimensions
+        width, height = img.size
+        
+        # Try to load a font, use default if unable
+        try:
+            font = ImageFont.truetype("arial.ttf", 16)
+            small_font = ImageFont.truetype("arial.ttf", 14)
+        except IOError:
+            font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+        
+        # Draw overall result banner
+        is_deepfake = detection_result.get("is_deepfake", False)
+        confidence = detection_result.get("confidence", 0.0)
+        
+        banner_color = self.colors["deepfake"] if is_deepfake else self.colors["authentic"]
+        banner_text = "DEEPFAKE DETECTED" if is_deepfake else "AUTHENTIC"
+        
+        # Draw top banner
+        banner_height = 30
+        draw.rectangle([(0, 0), (width, banner_height)], fill=banner_color)
+        text_width = draw.textlength(banner_text, font=font)
+        draw.text(
+            ((width - text_width) // 2, 5),
+            banner_text,
+            fill="#FFFFFF",
+            font=font
+        )
+        
+        # Draw confidence text
+        conf_text = f"Confidence: {confidence:.2f}"
+        draw.text(
+            (10, banner_height + 10),
+            conf_text,
+            fill=banner_color,
+            font=small_font
+        )
+        
+        # Draw face boxes if available
+        if "details" in detection_result:
+            details = detection_result["details"]
+            
+            # Check if there are face results
+            if "face_results" in details:
+                for face in details["face_results"]:
+                    # Draw bounding box
+                    if "bounding_box" in face:
+                        bbox = face["bounding_box"]
+                        x1, y1, x2, y2 = bbox[:4]
+                        
+                        face_conf = face.get("confidence", 0.0)
+                        bbox_color = self._get_confidence_color(face_conf)
+                        
+                        # Draw rectangle
+                        draw.rectangle(
+                            [(x1, y1), (x2, y2)],
+                            outline=bbox_color,
+                            width=2
+                        )
+                        
+                        # Draw confidence text
+                        face_text = f"{face_conf:.2f}"
+                        draw.text(
+                            (x1 + 5, y1 + 5),
+                            face_text,
+                            fill=bbox_color,
+                            font=small_font
+                        )
+        
+        return img
+    
+    def create_heatmap_overlay(self, image: Union[str, np.ndarray, Image.Image],
+                             attention_map: np.ndarray,
+                             alpha: float = 0.7) -> Image.Image:
+        """
+        Create a heatmap overlay on an image showing areas of interest.
+        
+        Args:
+            image: Image file path, numpy array, or PIL Image
+            attention_map: 2D numpy array of attention weights
+            alpha: Opacity of heatmap overlay (0-1)
+            
+        Returns:
+            PIL Image with heatmap overlay
+        """
+        # Load image if needed
+        if isinstance(image, str):
+            img = Image.open(image).convert("RGB")
+        elif isinstance(image, np.ndarray):
+            img = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        elif isinstance(image, Image.Image):
+            img = image.copy()
+        else:
+            raise ValueError("Unsupported image type")
+        
+        # Get image dimensions
+        width, height = img.size
+        
+        # Resize attention map to match image dimensions
+        attention_resized = cv2.resize(
+            attention_map, 
+            (width, height),
+            interpolation=cv2.INTER_LINEAR
+        )
+        
+        # Normalize the attention map
+        if np.max(attention_resized) > 0:
+            attention_normalized = attention_resized / np.max(attention_resized)
+        else:
+            attention_normalized = attention_resized
+        
+        # Create heatmap using jet colormap
+        heatmap = cv2.applyColorMap(
+            (255 * attention_normalized).astype(np.uint8),
+            cv2.COLORMAP_JET
+        )
+        
+        # Convert back to PIL Image
+        heatmap_img = Image.fromarray(cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB))
+        
+        # Blend images using alpha
+        blended = Image.blend(img, heatmap_img, alpha)
+        
+        return blended
+    
+    def create_audio_spectrogram(self, spectrogram: np.ndarray,
+                               is_deepfake: bool = False,
+                               confidence: float = 0.0) -> plt.Figure:
+        """
+        Create a spectrogram visualization for audio.
+        
+        Args:
+            spectrogram: Mel spectrogram as numpy array
+            is_deepfake: Whether the audio is detected as deepfake
+            confidence: Detection confidence
+            
+        Returns:
+            Matplotlib figure with spectrogram visualization
+        """
+        # Create figure with theme styling
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Set background color
+        fig.patch.set_facecolor(self.colors["background"])
+        ax.set_facecolor(self.colors["grid"])
+        
+        # Display spectrogram
+        img = ax.imshow(
+            spectrogram,
+            aspect='auto',
+            origin='lower',
+            cmap='viridis'
+        )
+        
+        # Add a color bar
+        cbar = fig.colorbar(img, ax=ax)
+        cbar.set_label('dB', color=self.colors["text"])
+        cbar.ax.yaxis.set_tick_params(color=self.colors["text"])
+        plt.setp(plt.getp(cbar.ax, 'yticklabels'), color=self.colors["text"])
+        
+        # Set labels
+        ax.set_xlabel('Time', color=self.colors["text"])
+        ax.set_ylabel('Mel Frequency', color=self.colors["text"])
+        
+        # Set tick colors
+        ax.tick_params(axis='x', colors=self.colors["text"])
+        ax.tick_params(axis='y', colors=self.colors["text"])
+        
+        # Add title with detection result
+        result_text = "DEEPFAKE DETECTED" if is_deepfake else "AUTHENTIC"
+        color = self.colors["deepfake"] if is_deepfake else self.colors["authentic"]
+        
+        title = f"Audio Spectrogram: {result_text} (Confidence: {confidence:.2f})"
+        ax.set_title(title, color=color, fontweight='bold')
+        
+        # Add grid
+        ax.grid(color=self.colors["grid"], linestyle='-', linewidth=0.5, alpha=0.5)
+        
+        plt.tight_layout()
+        return fig
+    
+    def create_temporal_analysis(self, scores: List[float], 
+                               times: List[float],
+                               threshold: float = 0.5) -> plt.Figure:
+        """
+        Create a temporal analysis visualization showing detection scores over time.
+        
+        Args:
+            scores: List of detection scores
+            times: List of time points corresponding to scores
+            threshold: Confidence threshold for classification
+            
+        Returns:
+            Matplotlib figure with temporal analysis visualization
+        """
+        # Create figure with theme styling
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Set background color
+        fig.patch.set_facecolor(self.colors["background"])
+        ax.set_facecolor(self.colors["grid"])
+        
+        # Create colors based on threshold
+        colors = []
+        for score in scores:
+            if score >= threshold:
+                colors.append(self.colors["deepfake"])
+            else:
+                colors.append(self.colors["authentic"])
+        
+        # Plot scores
+        ax.scatter(times, scores, c=colors, s=50, alpha=0.8)
+        ax.plot(times, scores, color=self.colors["primary"], alpha=0.6)
+        
+        # Add threshold line
+        ax.axhline(y=threshold, color=self.colors["uncertain"], 
+                 linestyle='--', alpha=0.7, label=f"Threshold ({threshold})")
+        
+        # Set labels
+        ax.set_xlabel('Time (seconds)', color=self.colors["text"])
+        ax.set_ylabel('Deepfake Confidence Score', color=self.colors["text"])
+        
+        # Set tick colors
+        ax.tick_params(axis='x', colors=self.colors["text"])
+        ax.tick_params(axis='y', colors=self.colors["text"])
+        
+        # Add title
+        ax.set_title('Temporal Analysis', color=self.colors["text"], fontweight='bold')
+        
+        # Add grid
+        ax.grid(color=self.colors["grid"], linestyle='-', linewidth=0.5, alpha=0.5)
+        
+        # Set y-axis limits
+        ax.set_ylim([0, 1])
+        
+        # Add legend
+        ax.legend(facecolor=self.colors["background"], edgecolor=self.colors["grid"],
+                labelcolor=self.colors["text"])
+        
+        plt.tight_layout()
+        return fig
+    
+    def create_video_analysis_dashboard(self, detection_result: Dict[str, Any],
+                                      include_frames: int = 5) -> Dict[str, Any]:
+        """
+        Create a comprehensive dashboard visualization for video analysis.
+        
+        Args:
+            detection_result: Detection result dictionary for a video
+            include_frames: Number of key frames to include in visualization
+            
+        Returns:
+            Dictionary of visualization elements:
+            - temporal_plot: Temporal analysis as base64 image
+            - frame_overlays: List of key frames with detection overlays
+            - summary_stats: Summary statistics and visualization
+        """
+        dashboard = {}
+        
+        # Extract required data
+        is_deepfake = detection_result.get("is_deepfake", False)
+        confidence = detection_result.get("confidence", 0.0)
+        details = detection_result.get("details", {})
+        
+        # Create temporal analysis visualization
+        if "frame_scores" in details:
+            frame_scores = details["frame_scores"]
+            frame_times = details.get("frame_times", list(range(len(frame_scores))))
+            
+            temporal_fig = self.create_temporal_analysis(
+                frame_scores, 
+                frame_times,
+                detection_result.get("threshold", 0.5)
+            )
+            
+            # Convert to base64
+            buf = BytesIO()
+            temporal_fig.savefig(buf, format='png', dpi=self.dpi, 
+                               facecolor=self.colors["background"])
+            buf.seek(0)
+            temporal_plot = base64.b64encode(buf.read()).decode('utf-8')
+            plt.close(temporal_fig)
+            
+            dashboard["temporal_plot"] = temporal_plot
+        
+        # Process key frames
+        frame_overlays = []
+        
+        # Select key frames (most confident deepfake frames and some authentic frames)
+        if "frames" in details and "frame_scores" in details:
+            frames = details["frames"]
+            scores = details["frame_scores"]
+            
+            # Sort frames by score
+            frame_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+            
+            # Select top deepfake frames and some authentic frames
+            selected_indices = []
+            deepfake_count = 0
+            authentic_count = 0
+            
+            for idx in frame_indices:
+                if len(selected_indices) >= include_frames:
+                    break
+                    
+                if scores[idx] >= detection_result.get("threshold", 0.5):
+                    if deepfake_count < include_frames // 2 + 1:
+                        selected_indices.append(idx)
+                        deepfake_count += 1
+                else:
+                    if authentic_count < include_frames // 2:
+                        selected_indices.append(idx)
+                        authentic_count += 1
+            
+            # Sort by original order
+            selected_indices.sort()
+            
+            # Create overlays for selected frames
+            for idx in selected_indices:
+                frame = frames[idx]
+                
+                # Create visualization with detection overlay
+                frame_result = {
+                    "is_deepfake": scores[idx] >= detection_result.get("threshold", 0.5),
+                    "confidence": scores[idx],
+                    "details": {}
+                }
+                
+                # If face detection results are available
+                if "face_detections" in details:
+                    frame_result["details"]["face_results"] = details["face_detections"].get(str(idx), [])
+                
+                overlay = self.create_detection_overlay(frame, frame_result)
+                
+                # Convert to base64
+                buf = BytesIO()
+                overlay.save(buf, format='PNG')
+                buf.seek(0)
+                overlay_b64 = base64.b64encode(buf.read()).decode('utf-8')
+                
+                frame_overlays.append({
+                    "frame_index": idx,
+                    "time": details.get("frame_times", [0] * len(frames))[idx],
+                    "score": scores[idx],
+                    "overlay": overlay_b64
+                })
+        
+        dashboard["frame_overlays"] = frame_overlays
+        
+        # Create summary statistics
+        summary_stats = {
+            "is_deepfake": is_deepfake,
+            "confidence": confidence,
+            "threshold": detection_result.get("threshold", 0.5),
+            "temporal_consistency": details.get("temporal_inconsistency", 0.0),
+            "av_sync_score": details.get("av_sync_score", 0.0),
+            "total_frames_analyzed": len(details.get("frame_scores", [])),
+            "deepfake_frame_percentage": (
+                sum(1 for s in details.get("frame_scores", []) 
+                    if s >= detection_result.get("threshold", 0.5)) / 
+                max(1, len(details.get("frame_scores", [])))
+            ) * 100
+        }
+        
+        dashboard["summary_stats"] = summary_stats
+        
+        return dashboard
+    
+    def create_confidence_gauge_chart(self, confidence: float, 
+                                    is_deepfake: bool) -> Dict[str, Any]:
+        """
+        Create a gauge chart visualization of detection confidence.
+        
+        Args:
+            confidence: Detection confidence score (0-1)
+            is_deepfake: Whether the media is detected as deepfake
+            
+        Returns:
+            Plotly figure data as JSON
+        """
+        # Determine color based on confidence and result
+        if is_deepfake:
+            color = self.colors["deepfake"]
+            title = "DEEPFAKE DETECTED"
+        else:
+            color = self.colors["authentic"]
+            title = "AUTHENTIC"
+        
+        # Create gauge chart
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=confidence * 100,  # Convert to percentage
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': title, 'font': {'color': color, 'size': 24}},
+            gauge={
+                'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': self.colors["text"]},
+                'bar': {'color': color},
+                'bgcolor': self.colors["grid"],
+                'borderwidth': 2,
+                'bordercolor': self.colors["text"],
+                'steps': [
+                    {'range': [0, 50], 'color': self.colors["authentic"]},
+                    {'range': [50, 100], 'color': self.colors["deepfake"]}
+                ],
+                'threshold': {
+                    'line': {'color': self.colors["uncertain"], 'width': 4},
+                    'thickness': 0.75,
+                    'value': 50
+                }
+            },
+            number={'suffix': '%', 'font': {'color': self.colors["text"], 'size': 20}}
+        ))
+        
+        # Update layout with theme
+        fig.update_layout(
+            paper_bgcolor=self.colors["background"],
+            font={'color': self.colors["text"], 'family': 'Arial'},
+            margin=dict(l=20, r=20, t=60, b=20),
+            height=300
+        )
+        
+        return fig.to_dict()
+    
+    def save_image(self, image: Union[Image.Image, np.ndarray], 
+                 filename: str, directory: str = None) -> str:
+        """
+        Save an image to file.
+        
+        Args:
+            image: PIL Image or numpy array
+            filename: Filename to save as
+            directory: Directory to save in, defaults to self.output_dir
+            
+        Returns:
+            Path to saved file
+        """
+        if directory is None:
+            directory = self.output_dir
+            
+        os.makedirs(directory, exist_ok=True)
+        
+        # Ensure the filename has an extension
+        if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            filename += '.png'
+            
+        filepath = os.path.join(directory, filename)
+        
+        # Convert numpy array to PIL Image if needed
+        if isinstance(image, np.ndarray):
+            if image.ndim == 3 and image.shape[2] == 3:  # BGR to RGB
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image)
+            
+        # Save the image
+        image.save(filepath)
+        self.logger.debug(f"Saved image to {filepath}")
+        
+        return filepath
+    
+    def _get_confidence_color(self, confidence: float) -> str:
+        """
+        Get a color based on confidence value.
+        
+        Args:
+            confidence: Confidence value (0-1)
+            
+        Returns:
+            Hex color code
+        """
+        if confidence >= 0.7:
+            return self.colors["deepfake"]
+        elif confidence <= 0.3:
+            return self.colors["authentic"]
+        else:
+            return self.colors["uncertain"]
+    
+    def encode_image_base64(self, image: Union[Image.Image, np.ndarray, str]) -> str:
+        """
+        Encode an image as base64 string.
+        
+        Args:
+            image: PIL Image, numpy array, or path to image
+            
+        Returns:
+            Base64 encoded string
+        """
+        # Load image if it's a path
+        if isinstance(image, str):
+            img = Image.open(image)
+        # Convert numpy array to PIL Image
+        elif isinstance(image, np.ndarray):
+            if image.ndim == 3 and image.shape[2] == 3:  # BGR to RGB
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(image)
+        # Use PIL Image directly
+        elif isinstance(image, Image.Image):
+            img = image
+        else:
+            raise ValueError("Unsupported image type")
+            
+        # Convert to base64
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        
+        return base64.b64encode(buffer.read()).decode('utf-8')
+
+# Helper functions
+def fig_to_base64(fig: plt.Figure) -> str:
+    """
+    Convert a matplotlib figure to base64 string.
     
     Args:
-        img_array: Image as numpy array (RGB)
+        fig: Matplotlib figure
         
     Returns:
         Base64 encoded string
     """
-    if len(img_array.shape) == 2:  # Grayscale
-        img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
-    elif img_array.shape[2] == 4:  # RGBA
-        img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2RGB)
-    
-    # Convert to PIL Image
-    img = Image.fromarray(img_array.astype('uint8'))
-    
-    # Save to bytes buffer
-    buffer = BytesIO()
-    img.save(buffer, format='PNG')
-    
-    # Encode as base64
-    img_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    return f"data:image/png;base64,{img_str}"
-
-# Generate heatmap visualizations
-def generate_heatmap(original_img: np.ndarray, activation_map: np.ndarray, 
-                   alpha: float = 0.5, colormap: str = DEFAULT_HEATMAP_COLORMAP) -> np.ndarray:
-    """
-    Generate a heatmap overlay on an image.
-    
-    Args:
-        original_img: Original image as numpy array
-        activation_map: Activation values (0-1 range)
-        alpha: Transparency factor for the overlay
-        colormap: Matplotlib colormap name
-        
-    Returns:
-        Heatmap visualization as numpy array
-    """
-    # Ensure activation map is normalized
-    if activation_map.max() > 1.0 or activation_map.min() < 0.0:
-        activation_map = (activation_map - activation_map.min()) / (activation_map.max() - activation_map.min() + 1e-8)
-    
-    # Resize activation map to match original image dimensions
-    if activation_map.shape[:2] != original_img.shape[:2]:
-        activation_map = cv2.resize(activation_map, 
-                                   (original_img.shape[1], original_img.shape[0]), 
-                                   interpolation=cv2.INTER_LINEAR)
-    
-    # Apply colormap
-    cmap = plt.get_cmap(colormap)
-    heatmap = cmap(activation_map)
-    heatmap = np.uint8(heatmap * 255)[:, :, :3]  # Remove alpha channel
-    
-    # Blend with original image
-    blended = cv2.addWeighted(original_img, 1.0 - alpha, heatmap, alpha, 0)
-    
-    return blended
-
-# Create confidence gauge visualization
-def create_confidence_gauge(confidence: float, width: int = 200, height: int = 30, 
-                           threshold_medium: float = 40.0, threshold_high: float = 70.0) -> np.ndarray:
-    """
-    Create a visual gauge showing confidence level.
-    
-    Args:
-        confidence: Confidence value (0-100)
-        width: Width of gauge image
-        height: Height of gauge image
-        threshold_medium: Threshold for medium confidence
-        threshold_high: Threshold for high confidence
-        
-    Returns:
-        Gauge visualization as numpy array
-    """
-    # Create blank image
-    img = np.ones((height, width, 3), dtype=np.uint8) * 255
-    
-    # Determine color based on confidence thresholds
-    if confidence >= threshold_high:
-        color = hex_to_rgb(DEFAULT_CONFIDENCE_COLORS['high'])
-    elif confidence >= threshold_medium:
-        color = hex_to_rgb(DEFAULT_CONFIDENCE_COLORS['medium'])
-    else:
-        color = hex_to_rgb(DEFAULT_CONFIDENCE_COLORS['low'])
-    
-    # Calculate fill width based on confidence
-    fill_width = int((confidence / 100.0) * (width - 4))
-    
-    # Draw border and fill
-    cv2.rectangle(img, (0, 0), (width - 1, height - 1), (0, 0, 0), 1)
-    cv2.rectangle(img, (2, 2), (2 + fill_width, height - 3), color, -1)
-    
-    # Add text showing percentage
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    text = f"{confidence:.1f}%"
-    text_size = cv2.getTextSize(text, font, 0.5, 1)[0]
-    text_x = (width - text_size[0]) // 2
-    text_y = (height + text_size[1]) // 2
-    
-    # Add drop shadow for better visibility
-    cv2.putText(img, text, (text_x + 1, text_y + 1), font, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
-    cv2.putText(img, text, (text_x, text_y), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-    
-    return img
-
-# Helper function to convert hex color to RGB
-def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
-    """
-    Convert hex color string to RGB tuple.
-    
-    Args:
-        hex_color: Hex color string (e.g., '#FF0000')
-        
-    Returns:
-        RGB tuple (0-255 range)
-    """
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-
-# Generate timeline visualization for video analysis
-def create_timeline_visualization(duration: float, markers: List[Dict[str, Any]], 
-                                width: int = 800, height: int = 80) -> np.ndarray:
-    """
-    Create a visual timeline with markers for video analysis.
-    
-    Args:
-        duration: Video duration in seconds
-        markers: List of markers with position (0-100), width, and description
-        width: Width of timeline image
-        height: Height of timeline image
-        
-    Returns:
-        Timeline visualization as numpy array
-    """
-    # Create blank image with Tron theme (dark background)
-    img = np.zeros((height, width, 3), dtype=np.uint8)
-    img[:, :] = (10, 10, 30)  # Dark blue background
-    
-    # Draw timeline bar
-    bar_y = height // 2
-    bar_height = height // 6
-    cv2.rectangle(img, (0, bar_y - bar_height//2), (width, bar_y + bar_height//2), (50, 50, 80), -1)
-    cv2.rectangle(img, (0, bar_y - bar_height//2), (width, bar_y + bar_height//2), (0, 180, 220), 1)
-    
-    # Draw time markers
-    for i in range(11):  # 0% to 100% in 10% increments
-        x_pos = int((i / 10.0) * width)
-        cv2.line(img, (x_pos, bar_y - bar_height), (x_pos, bar_y + bar_height), (0, 150, 200), 1)
-        
-        # Add time labels
-        time_text = f"{duration * (i / 10.0):.1f}s"
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        text_size = cv2.getTextSize(time_text, font, 0.4, 1)[0]
-        text_x = x_pos - text_size[0] // 2
-        text_y = bar_y + bar_height + 15
-        cv2.putText(img, time_text, (text_x, text_y), font, 0.4, (150, 220, 255), 1, cv2.LINE_AA)
-    
-    # Draw markers
-    for marker in markers:
-        position = marker.get('position', 0)  # 0-100 percentage
-        marker_width = marker.get('width', 2)  # Width in percentage points
-        description = marker.get('description', '')
-        
-        # Calculate pixel positions
-        start_x = int((position / 100.0) * width)
-        marker_w = max(5, int((marker_width / 100.0) * width))  # Ensure minimum visibility
-        
-        # Draw marker highlight on timeline
-        cv2.rectangle(img, 
-                     (start_x, bar_y - bar_height//2), 
-                     (start_x + marker_w, bar_y + bar_height//2), 
-                     (255, 50, 50), -1)  # Red marker
-        
-        # Add glow effect (Tron style)
-        cv2.rectangle(img, 
-                     (start_x - 1, bar_y - bar_height//2 - 1), 
-                     (start_x + marker_w + 1, bar_y + bar_height//2 + 1), 
-                     (255, 100, 100), 1)
-        
-        # Add description text above timeline
-        if description:
-            # Truncate long descriptions
-            if len(description) > 20:
-                description = description[:17] + "..."
-                
-            text_size = cv2.getTextSize(description, font, 0.4, 1)[0]
-            text_x = min(start_x, width - text_size[0] - 5)  # Keep text within image
-            text_y = bar_y - bar_height - 5
-            
-            # Draw text with glow effect
-            cv2.putText(img, description, (text_x + 1, text_y + 1), font, 0.4, (255, 50, 50), 1, cv2.LINE_AA)
-            cv2.putText(img, description, (text_x, text_y), font, 0.4, (255, 150, 150), 1, cv2.LINE_AA)
-    
-    return img
-
-# Generate spectrograms for audio visualization
-def generate_audio_spectrogram(audio_data: np.ndarray, sample_rate: int, 
-                             n_fft: int = 2048, hop_length: int = 512) -> np.ndarray:
-    """
-    Generate a spectrogram visualization for audio analysis.
-    
-    Args:
-        audio_data: Audio samples as numpy array
-        sample_rate: Audio sample rate in Hz
-        n_fft: FFT window size
-        hop_length: Number of samples between frames
-        
-    Returns:
-        Spectrogram visualization as numpy array
-    """
-    try:
-        import librosa
-        import librosa.display
-    except ImportError:
-        logger.error("librosa is required for audio visualization")
-        # Create an error image
-        img = np.zeros((300, 500, 3), dtype=np.uint8)
-        img[:] = (30, 30, 30)
-        cv2.putText(img, "librosa not installed", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        return img
-    
-    # Compute spectrogram
-    D = librosa.stft(audio_data, n_fft=n_fft, hop_length=hop_length)
-    S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
-    
-    # Create figure and plot spectrogram
-    plt.figure(figsize=(10, 4))
-    plt.style.use('dark_background')  # Tron-like dark theme
-    
-    librosa.display.specshow(S_db, x_axis='time', y_axis='hz', sr=sample_rate, hop_length=hop_length, cmap='inferno')
-    plt.colorbar(format='%+2.0f dB')
-    plt.title('Spectrogram Analysis')
-    plt.tight_layout()
-    
-    # Convert plot to image
     buf = BytesIO()
-    plt.savefig(buf, format='png', dpi=100)
-    plt.close()
+    fig.savefig(buf, format='png', bbox_inches='tight', transparent=True)
     buf.seek(0)
-    
-    # Load image from buffer
-    img = np.array(Image.open(buf))
-    
-    # Add Tron-style glow effects around the edges
-    border_size = 2
-    img = cv2.copyMakeBorder(img, border_size, border_size, border_size, border_size, 
-                           cv2.BORDER_CONSTANT, value=(0, 220, 220))
-    
-    return img
+    base64_str = base64.b64encode(buf.read()).decode('utf-8')
+    plt.close(fig)
+    return base64_str
 
-# Save visualizations to disk
-def save_visualization(img: np.ndarray, output_dir: str, filename: str, 
-                     create_dir: bool = True) -> str:
+def generate_plot_colors(n: int, theme: str = "tron_legacy") -> List[str]:
     """
-    Save visualization image to disk.
+    Generate n distinct colors for plots based on theme.
     
     Args:
-        img: Image as numpy array
-        output_dir: Directory to save the image
-        filename: Filename (without directory)
-        create_dir: Whether to create the output directory if it doesn't exist
+        n: Number of colors to generate
+        theme: Theme name
         
     Returns:
-        Path to the saved file
+        List of hex color codes
     """
-    if create_dir:
-        os.makedirs(output_dir, exist_ok=True)
-    
-    # Ensure filename has extension
-    if not filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-        filename = f"{filename}.png"
-    
-    filepath = os.path.join(output_dir, filename)
-    
-    # Convert to BGR for OpenCV
-    if len(img.shape) == 3 and img.shape[2] == 3:
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    if theme == "tron_legacy":
+        base_colors = [
+            "#4CC9F0", "#4361EE", "#3A0CA3", "#7209B7", 
+            "#F72585", "#B5179E", "#560BAD", "#480CA8"
+        ]
     else:
-        img_bgr = img
+        base_colors = [
+            "#1976D2", "#388E3C", "#FBC02D", "#D32F2F",
+            "#7B1FA2", "#00796B", "#FFA000", "#5D4037"
+        ]
     
-    # Save image
-    cv2.imwrite(filepath, img_bgr)
-    return filepath
-
-# Create detection summary visualization
-def create_detection_summary(original_img: np.ndarray, confidence: float, 
-                           verdict: str, detector_name: str) -> np.ndarray:
-    """
-    Create a summary visualization with the image, confidence score, and verdict.
-    
-    Args:
-        original_img: Original image as numpy array
-        confidence: Confidence value (0-100)
-        verdict: Detection verdict ('authentic' or 'deepfake')
-        detector_name: Name of the detector used
-        
-    Returns:
-        Summary visualization as numpy array
-    """
-    # Calculate dimensions
-    img_height, img_width = original_img.shape[:2]
-    padding = 20
-    header_height = 60
-    footer_height = 100
-    total_height = img_height + header_height + footer_height + (padding * 3)
-    total_width = max(img_width, 500) + (padding * 2)
-    
-    # Create Tron theme background (dark with grid)
-    summary = np.zeros((total_height, total_width, 3), dtype=np.uint8)
-    summary[:, :] = (10, 20, 30)  # Dark blue-black background
-    
-    # Add subtle grid lines (Tron effect)
-    grid_size = 40
-    grid_color = (20, 40, 60)
-    
-    for i in range(0, total_width, grid_size):
-        cv2.line(summary, (i, 0), (i, total_height), grid_color, 1)
-    
-    for i in range(0, total_height, grid_size):
-        cv2.line(summary, (0, i), (total_width, i), grid_color, 1)
-    
-    # Add header
-    header_y = padding
-    header_color = (0, 200, 255) if verdict.lower() == 'authentic' else (0, 0, 255)
-    
-    # Draw header box with glow effect
-    cv2.rectangle(summary, 
-                 (padding, header_y), 
-                 (total_width - padding, header_y + header_height), 
-                 (header_color[0] // 4, header_color[1] // 4, header_color[2] // 4), -1)
-    cv2.rectangle(summary, 
-                 (padding, header_y), 
-                 (total_width - padding, header_y + header_height), 
-                 header_color, 2)
-    
-    # Add title text
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    title = f"Detection Result: {verdict.upper()}"
-    title_size = cv2.getTextSize(title, font, 1, 2)[0]
-    title_x = (total_width - title_size[0]) // 2
-    title_y = header_y + (header_height + title_size[1]) // 2
-    
-    # Add glow effect to text
-    cv2.putText(summary, title, (title_x + 2, title_y + 2), font, 1, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.putText(summary, title, (title_x, title_y), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
-    
-    # Place original image
-    img_y = header_y + header_height + padding
-    summary[img_y:img_y + img_height, padding:padding + img_width] = original_img
-    
-    # Add border around image
-    cv2.rectangle(summary, 
-                 (padding - 2, img_y - 2), 
-                 (padding + img_width + 1, img_y + img_height + 1), 
-                 header_color, 2)
-    
-    # Add footer with confidence gauge
-    footer_y = img_y + img_height + padding
-    
-    # Create confidence gauge
-    gauge_width = min(400, img_width)
-    gauge = create_confidence_gauge(confidence, width=gauge_width, height=30)
-    gauge_x = (total_width - gauge_width) // 2
-    gauge_y = footer_y + 20
-    
-    summary[gauge_y:gauge_y + gauge.shape[0], gauge_x:gauge_x + gauge.shape[1]] = gauge
-    
-    # Add detector info
-    detector_text = f"Detector: {detector_name}"
-    detector_size = cv2.getTextSize(detector_text, font, 0.5, 1)[0]
-    detector_x = (total_width - detector_size[0]) // 2
-    detector_y = gauge_y + gauge.shape[0] + 25
-    
-    cv2.putText(summary, detector_text, (detector_x, detector_y), font, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
-    
-    # Add final border with glow effect
-    cv2.rectangle(summary, (2, 2), (total_width - 3, total_height - 3), header_color, 2)
-    
-    return summary
+    # If we need more colors than base_colors, generate additional ones
+    if n <= len(base_colors):
+        return base_colors[:n]
+    else:
+        # Use HSV color space to generate evenly distributed colors
+        colors = []
+        for i in range(n):
+            hue = i / n
+            rgb = tuple(int(x * 255) for x in plt.cm.hsv(hue)[:3])
+            hex_color = '#{:02x}{:02x}{:02x}'.format(*rgb)
+            colors.append(hex_color)
+        return colors

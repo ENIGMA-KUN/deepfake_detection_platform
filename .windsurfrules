@@ -1,0 +1,607 @@
+# .windsurfrule
+
+## Project Definition
+
+This is a Deepfake Detection Platform that analyzes images, audio, and video for authenticity using deep learning models. The platform features a Tron Legacy-themed UI with media-specific tabs and detailed visualizations.
+
+## Project Structure Rules
+
+```
+deepfake-detection/
+├── README.md
+├── requirements.txt
+├── config.yaml
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── interface/
+│   │   ├── __init__.py
+│   │   ├── app.py
+│   │   ├── components/
+│   │   └── static/
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── processor.py
+│   │   ├── queue_manager.py
+│   │   └── result_handler.py
+│   └── utils/
+│       ├── __init__.py
+│       ├── file_handler.py
+│       ├── logging_utils.py
+│       └── visualization.py
+├── detectors/
+│   ├── __init__.py
+│   ├── base_detector.py
+│   ├── image_detector/
+│   │   ├── __init__.py
+│   │   ├── vit_detector.py
+│   │   └── ensemble.py
+│   ├── audio_detector/
+│   │   ├── __init__.py
+│   │   ├── wav2vec_detector.py
+│   │   └── spectrogram_analyzer.py
+│   └── video_detector/
+│       ├── __init__.py
+│       ├── genconvit.py
+│       └── frame_analyzer.py
+├── models/
+│   ├── __init__.py
+│   ├── model_loader.py
+│   ├── model_config.py
+│   └── cache/
+├── data/
+│   ├── __init__.py
+│   ├── preprocessing/
+│   │   ├── __init__.py
+│   │   ├── image_prep.py
+│   │   ├── audio_prep.py
+│   │   └── video_prep.py
+│   └── augmentation/
+│       ├── __init__.py
+│       └── augmenters.py
+├── reports/
+│   ├── templates/
+│   │   ├── detailed_report.html
+│   │   └── summary_report.html
+│   └── output/
+├── tests/
+│   ├── __init__.py
+│   ├── test_image_detector.py
+│   ├── test_audio_detector.py
+│   ├── test_video_detector.py
+│   └── test_data/
+└── docs/
+    ├── usage.md
+    ├── detector_details.md
+    └── model_descriptions.md
+```
+Update project strcutre when u add new file in Memory
+
+## State Tracking
+
+1. Create and maintain a `memory/` directory for project state
+2. Track all implemented files in `memory/project_state.json`
+3. Update task progress in `memory/task_tracker.json`
+4. Document all classes, functions, and variables in `memory/code_index.md`
+5. Store full implementation details in `memory/implementations/[filepath].md`
+
+## Anti-Hallucination Rules
+
+1. NEVER reference a module, class, function, or variable that hasn't been explicitly implemented
+2. ALWAYS verify file existence before importing from project modules
+3. NEVER invent new directory structures or files not defined in the project structure
+4. CHECK all imports against implemented files list before using
+5. MAINTAIN strict adherence to naming conventions in task descriptions
+6. DOCUMENT all assumptions when implementation details are ambiguous
+7. VERIFY all dependencies before implementing dependent modules
+8. DO NOT implement functionality beyond what is explicitly required
+
+## Coding Standards
+
+### Import Conventions
+```python
+# Standard library imports (alphabetically ordered)
+import os
+import sys
+from typing import Dict, List, Optional
+
+# Third-party imports (alphabetically ordered)
+import numpy as np
+import torch
+from transformers import ViTModel
+
+# Local imports (hierarchically ordered)
+from detectors.base_detector import BaseDetector
+from models.model_loader import load_model
+```
+
+### Docstring Format
+```python
+def function_name(param1: type, param2: type = default) -> return_type:
+    """
+    Brief description of function.
+    
+    Args:
+        param1: Description of first parameter
+        param2: Description of second parameter
+        
+    Returns:
+        Description of return value
+        
+    Raises:
+        ExceptionType: When/why this exception is raised
+    """
+```
+
+### Error Handling
+```python
+try:
+    # Operation that might fail
+    result = operation()
+except SpecificError as e:
+    logging.error(f"Operation failed: {str(e)}")
+    raise CustomError(f"Meaningful context: {str(e)}") from e
+```
+
+## Detector Implementation
+
+### Base Detector (detectors/base_detector.py)
+- Must be an abstract class with the following methods:
+  - `__init__(self, model_name: str, confidence_threshold: float = 0.5)`
+  - `detect(self, media_path: str) -> Dict[str, Any]` (abstract)
+  - `normalize_confidence(self, raw_score: float) -> float`
+  - `format_result(self, is_deepfake: bool, confidence: float, metadata: Dict) -> Dict[str, Any]`
+
+### Image Detector (detectors/image_detector/vit_detector.py)
+- Must use Vision Transformer (ViT) model: "google/vit-base-patch16-224"
+- Implement patch embedding, transformer encoder, and classification head
+- Include face detection preprocessing
+- Add support for region-specific analysis with heatmaps
+
+### Audio Detector (detectors/audio_detector/wav2vec_detector.py)
+- Must use Wav2Vec2 model: "facebook/wav2vec2-large-960h"
+- Process raw waveform through transformer encoder
+- Implement spectrogram analysis as complementary approach
+- Detect temporal inconsistencies in audio
+
+### Video Detector (detectors/video_detector/genconvit.py)
+- Implement GenConViT/TimeSformer hybrid approach
+- Perform frame-level analysis
+- Add temporal analysis across frames
+- Include audio-video sync analysis
+- Generate visualization of temporal inconsistencies
+
+## UI Implementation
+
+### Color Palette
+```css
+:root {
+  --deep-black: #000000;
+  --dark-teal-blue: #57A3B7;
+  --neon-cyan: #00FFFF;
+  --light-sky-blue: #BFD4FF;
+  --powder-blue: #BBFEEF;
+  --max-blue-green: #48B3B6;
+  --electric-purple: #3B1AAA;
+  --sunray: #DE945B;
+  --magenta: #B20D58;
+}
+```
+
+### UI Components
+- Grid-based layout with glowing lines
+- Neon outlines for interactive elements
+- Dynamic gradient backgrounds
+- Retro-futuristic typography (headers: Orbitron, Audiowide; body: Roboto, Open Sans)
+- Tron-inspired visualization components
+
+## Dependency Management
+
+### Python Dependencies
+```
+# Exact versions required
+torch==2.0.1
+transformers==4.30.2
+numpy==1.24.3
+pandas==2.0.2
+matplotlib==3.7.1
+pillow==9.5.0
+librosa==0.10.0.post2
+opencv-python==4.7.0.72
+scikit-learn==1.2.2
+tensorflow==2.12.0
+gradio==3.35.2
+```
+
+### Model Dependencies
+- Vision Transformer: "google/vit-base-patch16-224"
+- Wav2Vec2: "facebook/wav2vec2-large-960h"
+- GenConViT/TimeSformer: As specified in documentation
+
+## Implementation Order
+
+1. Initialize repository structure
+2. Implement base detector class
+3. Develop detector modules (image, audio, video)
+4. Create core processing pipeline
+5. Implement file handling utilities
+6. Build UI components
+7. Add model loader and configuration
+8. Create media preprocessing modules
+9. Implement report generation
+10. Integrate all components
+11. Add visualization features
+12. Create application entry point
+13. Implement error handling and logging
+
+## Testing Strategy
+
+- Create unit tests for each implemented module
+- Include sample media in tests/test_data/
+- Verify integration between dependent components
+- Test with valid and invalid inputs
+- Check error handling with edge cases
+
+## Project Knowledge
+
+### Detector Models
+
+#### Image Detector (Vision Transformer)
+- Divides images into fixed-size patches (16×16 pixels)
+- Processes patches through transformer blocks with self-attention
+- Uses classification head for prediction
+- Captures global context across image regions
+- Identifies subtle manipulations in facial features
+
+#### Audio Detector (Wav2Vec2)
+- Accepts raw waveforms via convolutional extraction
+- Uses transformer layers with multi-head self-attention
+- Fine-tuned for deepfake feature detection
+- Sensitive to synthetic speech artifacts
+- Supplements with spectrogram analysis
+
+#### Video Detector (GenConViT/TimeSformer)
+- Performs frame-level analysis with ViT
+- Aggregates temporal features across frames
+- Detects motion artifacts and continuity errors
+- Fuses with audio analysis for synchronization check
+- Generates heatmaps of suspicious regions
+
+## File Content Templates
+
+### base_detector.py
+Must include:
+```python
+from abc import ABC, abstractmethod
+
+class BaseDetector(ABC):
+    def __init__(self, model_name, confidence_threshold=0.5):
+        # Initialize attributes
+        
+    @abstractmethod
+    def detect(self, media_path):
+        # To be implemented by subclasses
+        
+    def normalize_confidence(self, raw_score):
+        # Convert model score to 0-1 range
+        
+    def format_result(self, is_deepfake, confidence, metadata=None):
+        # Return standardized result dict
+```
+
+### processor.py
+Must include:
+```python
+class MediaProcessor:
+    def __init__(self):
+        # Initialize detector registry
+        
+    def register_detector(self, media_type, detector):
+        # Add detector to registry
+        
+    def process(self, media_path):
+        # Identify media type and route to appropriate detector
+        
+    def generate_report(self, result):
+        # Create standardized report from results
+```
+
+### queue_manager.py
+Must include:
+```python
+class QueueManager:
+    def __init__(self, max_workers=2):
+        # Initialize queue and workers
+        
+    def add_task(self, task_type, media_path, priority=1):
+        # Add task to queue
+        
+    def get_task_status(self, task_id):
+        # Return task status
+        
+    def start_workers(self):
+        # Start worker threads
+```
+
+### app.py
+Must include:
+```python
+class DeepfakeDetectionApp:
+    def __init__(self):
+        # Initialize UI components
+        
+    def setup_layout(self):
+        # Create Tron-themed layout
+        
+    def create_tabs(self):
+        # Create image, audio, video tabs
+        
+    def create_upload_component(self, media_type):
+        # Create file upload component
+        
+    def create_results_display(self):
+        # Create visualization components
+```
+
+## Important Implementation Details
+
+1. Always implement proper error handling
+2. Include progress tracking for long operations
+3. Always validate input files before processing
+4. Cache models to avoid reloading
+5. Implement proper resource cleanup
+6. Use consistent result format across all detectors
+7. Apply Tron theme to all UI elements
+
+## Memory Templates
+
+### project_state.json
+```json
+{
+  "last_updated": "2025-04-16T14:30:00",
+  "implemented_files": [
+    {
+      "path": "detectors/base_detector.py",
+      "classes": ["BaseDetector"],
+      "functions": ["normalize_confidence", "format_result"],
+      "imports": ["abc", "typing"],
+      "dependents": []
+    }
+  ]
+}
+```
+
+### task_tracker.json
+```json
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Initialize Repository Structure",
+      "status": "done",
+      "completed_files": ["README.md", "requirements.txt", "config.yaml"]
+    }
+  ]
+}
+```
+
+I'll add a specific section to the .windsurfrule file addressing module name consistency and import path problems:
+
+## Module Name Consistency Rules
+
+1. NEVER create modules with names that deviate from the project structure specification
+2. MAINTAIN strict consistency in class, function, and variable names across all files
+3. VERIFY that all import paths exactly match the actual file structure
+4. ENSURE all referenced classes and functions exist in the specified modules before importing them
+5. ALWAYS check that imported modules are properly implemented before writing code that depends on them
+6. PROHIBIT duplicate implementations with different names
+7. FOLLOW exact naming patterns from previous implementations for related components
+8. STORE a registry of all module names, class names, and function signatures in memory for reference
+9. VALIDATE import statements against this registry before adding new imports
+10. ENFORCE consistent naming patterns for similar components (e.g., all detectors follow the same naming pattern)
+
+## Import Path Validation
+
+```python
+# Before implementing any import:
+def validate_import_path(import_path):
+    """
+    Verify that the import path exists and contains the expected components.
+    
+    Args:
+        import_path: The module path to validate (e.g., 'detectors.base_detector')
+        
+    Returns:
+        Boolean indicating if the import is valid
+    """
+    # Check if the module exists in the project_state registry
+    if import_path not in implemented_modules:
+        raise ImportError(f"Module {import_path} has not been implemented yet")
+    
+    # Verify the file path exists
+    file_path = import_path.replace('.', '/') + '.py'
+    if not os.path.exists(file_path):
+        raise ImportError(f"File for module {import_path} does not exist at {file_path}")
+    
+    return True
+```
+
+## Class Name Registry
+
+```json
+{
+  "module_registry": {
+    "detectors.base_detector": {
+      "classes": ["BaseDetector"],
+      "functions": ["normalize_confidence", "format_result"],
+      "imports": ["abc", "typing"]
+    },
+    "detectors.image_detector.vit_detector": {
+      "classes": ["ViTDetector"],
+      "functions": ["detect", "_generate_attention_map"],
+      "imports": ["detectors.base_detector.BaseDetector", "models.model_loader.load_model"]
+    }
+  }
+}
+```
+
+## Implementation Consistency Checks
+
+1. Before implementing a new file, verify all imported modules exist and contain the expected classes/functions
+2. After implementing a file, register all classes, functions, and variables in the module registry
+3. Use consistent naming patterns across related components (e.g., all detector classes should end with "Detector")
+4. Maintain identical method signatures for overridden methods in derived classes
+5. Verify that method parameters match between interface declarations and implementations
+6. Ensure all class inheritance hierarchies are consistent with the project design
+7. Use the same parameter names for similar functions across different modules
+
+## File Dependency Tracking
+
+For each file implementation, track:
+1. All modules this file depends on
+2. All modules that depend on this file
+3. Specific classes and functions used by dependent modules
+4. Required import statements for dependencies
+
+This ensures when updating any file, all dependent files can be verified for compatibility.
+
+
+# Bug Fix Instructions for .windsurfrule
+
+Add these rules to your existing .windsurfrule file to address specific errors encountered in the project:
+
+## Dash Framework Compatibility Rules
+
+### 1. Dash Configuration Object Usage
+```python
+# INCORRECT - Passing config as a dictionary
+app = dash.Dash(__name__, config=config_dict)
+
+# CORRECT - Use the proper Dash configuration approach
+app = dash.Dash(
+    __name__,
+    assets_folder=config['assets_folder'],
+    title=config['app_title'],
+    external_stylesheets=config['external_stylesheets']
+)
+```
+
+### 2. Asset URL Generation
+```python
+# INCORRECT - Assuming assets_external_path attribute exists
+html.Img(src=app.get_asset_url("logo.png"))
+
+# CORRECT - Verify assets directory exists and use appropriate path
+# Ensure the assets directory structure is:
+# app/interface/assets/logo.png
+html.Img(src='/assets/logo.png')  # Direct path reference
+# OR
+html.Img(src=app.get_asset_url("logo.png"))  # Only if properly configured
+```
+
+### 3. Running Dash Application
+```python
+# INCORRECT - Using deprecated method
+app.run_server(debug=True, host='0.0.0.0', port=8050)
+
+# CORRECT - Using current API
+app.run(debug=True, host='0.0.0.0', port=8050)
+```
+
+## Implementation Verification Rules
+
+### 1. Asset Directory Validation
+- VERIFY app/interface/assets/ directory exists before referencing assets
+- CREATE directory if missing: `os.makedirs(os.path.join('app', 'interface', 'assets'), exist_ok=True)`
+- PLACE required static files (logo.png, css files) in the assets directory
+
+### 2. Configuration Error Prevention
+```python
+# Add validation for configuration objects
+def validate_config(config):
+    """Validate the configuration dictionary."""
+    required_keys = ['model_paths', 'upload_folder', 'results_folder']
+    for key in required_keys:
+        if key not in config:
+            raise ValueError(f"Configuration missing required key: {key}")
+    return config
+```
+
+### 3. Path Validation Utility
+```python
+# Add utility function to verify paths
+def ensure_path_exists(path):
+    """Create directory if it doesn't exist."""
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+        logging.info(f"Created directory: {path}")
+    return path
+```
+
+## Error Tracing Rules
+
+### 1. Enhanced Error Handling
+- WRAP application initialization in try-except blocks
+- LOG detailed error information including file paths and line numbers
+- IMPLEMENT fallback behavior when non-critical components fail
+
+### 2. Configuration Debug Helper
+```python
+# Add debug helper for configuration troubleshooting
+def debug_config(config):
+    """Log configuration details for debugging."""
+    logging.debug("---- Configuration Debug ----")
+    for key, value in config.items():
+        logging.debug(f"{key}: {value}")
+    logging.debug("-----------------------------")
+```
+
+### 3. Startup Verification Checklist
+- VALIDATE all required directories exist
+- CHECK model files are accessible
+- VERIFY database connections (if applicable)
+- TEST basic detector functionality with sample files
+- CONFIRM UI components load correctly
+
+## Dependency Management Rules
+
+### 1. Version Pinning
+- SPECIFY exact versions for all dependencies
+- PIN Dash to a specific version: dash==3.0.3
+- ENSURE all interdependent packages have compatible versions
+
+### 2. Package Import Validation
+```python
+# Add import validation at startup
+def validate_imports():
+    """Validate critical imports are available."""
+    required_packages = {
+        'dash': 'UI Framework',
+        'torch': 'Machine Learning',
+        'transformers': 'Hugging Face Models',
+        'numpy': 'Numerical Processing',
+        'opencv-python': 'Image Processing'
+    }
+    
+    missing = []
+    for package, description in required_packages.items():
+        try:
+            importlib.import_module(package)
+        except ImportError:
+            missing.append(f"{package} ({description})")
+    
+    if missing:
+        raise ImportError(f"Missing required packages: {', '.join(missing)}")
+```
+
+Add these rules to your .windsurfrule file to help Windsurf avoid and fix these specific errors during project implementation.
+## Final Notes
+
+1. Always update memory files after implementing each module
+2. Never skip dependency checks before implementation
+3. Follow the exact repository structure
+4. Verify all imports against implemented files
+5. Maintain consistent naming across the project
+6. Document all implementation details
+7. Use exact model specifications from the Detectors document
+8. Apply the Tron Legacy theme consistently across UI

@@ -1,273 +1,300 @@
-# data/preprocessing/image_prep.py
+"""
+Image preprocessing module for deepfake detection.
+"""
 import os
-import numpy as np
+import logging
 import cv2
+import numpy as np
+from typing import Dict, Any, List, Tuple, Optional, Union
 from PIL import Image
 import torch
-from torchvision import transforms
-import logging
-
-logger = logging.getLogger(__name__)
+from facenet_pytorch import MTCNN
 
 class ImagePreprocessor:
-    """Class for preprocessing image data for deepfake detection."""
+    """
+    Preprocessor for image data to prepare for deepfake detection.
+    Handles operations like face extraction, normalization, and augmentation.
+    """
     
-    def __init__(self, config=None):
+    def __init__(self, face_detection_threshold: float = 0.9,
+                 target_size: Tuple[int, int] = (224, 224),
+                 device: str = None):
         """
         Initialize the image preprocessor.
         
         Args:
-            config (dict, optional): Configuration parameters for preprocessing
+            face_detection_threshold: Confidence threshold for face detection
+            target_size: Target size for output images (height, width)
+            device: Device to use for processing ('cuda' or 'cpu')
         """
-        self.config = config or {}
-        self.target_size = self.config.get('target_size', (224, 224))
-        self.normalize = self.config.get('normalize', True)
-        self.face_detection = self.config.get('face_detection', False)
+        self.logger = logging.getLogger(__name__)
         
-        # Initialize face detector if enabled
-        if self.face_detection:
-            self._init_face_detector()
-            
-        # Default normalization values (ImageNet)
-        self.mean = self.config.get('mean', [0.485, 0.456, 0.406])
-        self.std = self.config.get('std', [0.229, 0.224, 0.225])
+        # Determine device
+        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Create transform pipeline
-        self._create_transforms()
+        # Set parameters
+        self.face_detection_threshold = face_detection_threshold
+        self.target_size = target_size
+        
+        # Initialize face detector
+        self.face_detector = MTCNN(
+            keep_all=True,
+            device=self.device,
+            thresholds=[0.6, 0.7, face_detection_threshold],  # MTCNN thresholds
+            factor=0.7  # Scale factor for the image pyramid
+        )
+        
+        self.logger.info(f"ImagePreprocessor initialized (device: {self.device})")
     
-    def _init_face_detector(self):
-        """Initialize the face detector model."""
-        try:
-            # Load OpenCV's face detector
-            face_cascade_path = self.config.get(
-                'face_cascade_path', 
-                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            )
-            self.face_cascade = cv2.CascadeClassifier(face_cascade_path)
-            
-            # Check if face detector was loaded successfully
-            if self.face_cascade.empty():
-                logger.warning("Face detector could not be loaded. Face detection disabled.")
-                self.face_detection = False
-        except Exception as e:
-            logger.error(f"Error initializing face detector: {e}")
-            self.face_detection = False
-    
-    def _create_transforms(self):
-        """Create the transformation pipeline for preprocessing."""
-        transform_list = []
-        
-        # Resize transform
-        transform_list.append(transforms.Resize(self.target_size))
-        
-        # Convert to tensor
-        transform_list.append(transforms.ToTensor())
-        
-        # Normalize if enabled
-        if self.normalize:
-            transform_list.append(transforms.Normalize(self.mean, self.std))
-        
-        self.transform = transforms.Compose(transform_list)
-    
-    def preprocess(self, image_path, return_tensor=True):
+    def preprocess(self, image_path: str, extract_faces: bool = True) -> Dict[str, Any]:
         """
         Preprocess an image for deepfake detection.
         
         Args:
-            image_path (str): Path to the image file
-            return_tensor (bool): If True, return torch tensor; otherwise NumPy array
+            image_path: Path to the image file
+            extract_faces: Whether to extract faces from the image
             
         Returns:
-            preprocessed_image: Preprocessed image as tensor or NumPy array
-            meta_info (dict): Additional information about preprocessing
+            Dictionary containing:
+            - normalized_image: Full preprocessed image
+            - faces: List of extracted faces (if extract_faces=True)
+            - face_boxes: List of face bounding boxes (if extract_faces=True)
+            - metadata: Additional preprocessing metadata
+            
+        Raises:
+            FileNotFoundError: If the image file doesn't exist
+            ValueError: If the image cannot be processed
         """
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+            
         try:
             # Load image
-            image = Image.open(image_path).convert('RGB')
+            image = self._load_image(image_path)
+            original_size = image.size
             
-            # Store original dimensions
-            original_width, original_height = image.size
-            meta_info = {
-                'original_size': (original_width, original_height),
-                'faces_detected': 0,
-                'preprocessing_steps': []
+            # Normalize full image
+            normalized_image = self._normalize_image(image)
+            
+            result = {
+                "normalized_image": normalized_image,
+                "metadata": {
+                    "original_size": original_size,
+                    "target_size": self.target_size,
+                }
             }
-            meta_info['preprocessing_steps'].append('load_image')
             
-            # Detect faces if enabled
-            if self.face_detection:
-                image, face_info = self._detect_and_extract_faces(image)
-                meta_info.update(face_info)
-                meta_info['preprocessing_steps'].append('face_detection')
+            # Extract faces if requested
+            if extract_faces:
+                faces, face_boxes = self._extract_faces(image)
+                result["faces"] = faces
+                result["face_boxes"] = face_boxes
+                result["metadata"]["faces_detected"] = len(faces)
             
-            # Apply transforms
-            if return_tensor:
-                processed_image = self.transform(image)
-                meta_info['preprocessing_steps'].append('transform_to_tensor')
-                
-                if self.normalize:
-                    meta_info['preprocessing_steps'].append('normalize')
-            else:
-                # Resize without normalization
-                image = image.resize(self.target_size)
-                processed_image = np.array(image)
-                meta_info['preprocessing_steps'].append('resize')
-            
-            return processed_image, meta_info
+            return result
             
         except Exception as e:
-            logger.error(f"Error preprocessing image {image_path}: {e}")
-            raise
+            self.logger.error(f"Error preprocessing image {image_path}: {str(e)}")
+            raise ValueError(f"Failed to preprocess image: {str(e)}")
     
-    def _detect_and_extract_faces(self, pil_image):
+    def _load_image(self, image_path: str) -> Image.Image:
         """
-        Detect and extract faces from an image.
+        Load an image from file.
         
         Args:
-            pil_image (PIL.Image): Input image
+            image_path: Path to the image file
             
         Returns:
-            PIL.Image: Image with extracted face or original if no face found
-            dict: Information about detected faces
+            PIL Image object
+            
+        Raises:
+            ValueError: If the image cannot be loaded
         """
-        # Convert PIL image to OpenCV format (RGB to BGR)
-        cv_image = np.array(pil_image)
-        cv_image = cv_image[:, :, ::-1].copy()
-        
-        # Detect faces
-        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
-        
-        face_info = {
-            'faces_detected': len(faces),
-            'face_regions': []
-        }
-        
-        # If faces found, extract the largest one
-        if len(faces) > 0:
-            # Find largest face by area
-            largest_face_idx = np.argmax([w * h for (x, y, w, h) in faces])
-            x, y, w, h = faces[largest_face_idx]
-            
-            # Add padding around face (20%)
-            padding_x = int(w * 0.2)
-            padding_y = int(h * 0.2)
-            
-            # Ensure coordinates are within image bounds
-            x_start = max(0, x - padding_x)
-            y_start = max(0, y - padding_y)
-            x_end = min(cv_image.shape[1], x + w + padding_x)
-            y_end = min(cv_image.shape[0], y + h + padding_y)
-            
-            # Extract face region
-            face_region = cv_image[y_start:y_end, x_start:x_end]
-            
-            # Store face location
-            face_info['face_regions'].append({
-                'x': x_start,
-                'y': y_start,
-                'width': x_end - x_start,
-                'height': y_end - y_start,
-                'is_largest': True
-            })
-            
-            # Convert back to PIL image
-            face_pil = Image.fromarray(face_region[:, :, ::-1])  # BGR to RGB
-            return face_pil, face_info
-        
-        # If no face found, return original image
-        return pil_image, face_info
-    
-    def batch_preprocess(self, image_paths, return_tensor=True):
-        """
-        Preprocess a batch of images.
-        
-        Args:
-            image_paths (list): List of paths to image files
-            return_tensor (bool): If True, return torch tensor; otherwise NumPy array
-            
-        Returns:
-            list: List of preprocessed images
-            list: List of meta info dictionaries
-        """
-        preprocessed_images = []
-        meta_infos = []
-        
-        for image_path in image_paths:
-            try:
-                processed_image, meta_info = self.preprocess(image_path, return_tensor)
-                preprocessed_images.append(processed_image)
-                meta_infos.append(meta_info)
-            except Exception as e:
-                logger.error(f"Error preprocessing image {image_path}: {e}")
-                # Skip failed images
-                continue
-        
-        # If return tensor and we have images, stack them
-        if return_tensor and preprocessed_images:
-            preprocessed_images = torch.stack(preprocessed_images)
-        
-        return preprocessed_images, meta_infos
-    
-    def apply_ela(self, image_path, quality=90, scale=10):
-        """
-        Apply Error Level Analysis (ELA) to image.
-        
-        Args:
-            image_path (str): Path to the image file
-            quality (int): JPEG compression quality for ELA
-            scale (int): Scale factor for ELA
-            
-        Returns:
-            numpy.ndarray: ELA processed image
-            dict: Meta information
-        """
-        meta_info = {
-            'preprocessing_steps': ['ela'],
-            'ela_quality': quality,
-            'ela_scale': scale
-        }
-        
         try:
-            # Load original image
-            original = Image.open(image_path).convert('RGB')
-            
-            # Create temporary filename for saving compressed version
-            filename, ext = os.path.splitext(image_path)
-            compressed_path = f"{filename}_compressed_temp.jpg"
-            
-            # Save image with specified quality
-            original.save(compressed_path, 'JPEG', quality=quality)
-            
-            # Open compressed image
-            compressed = Image.open(compressed_path).convert('RGB')
-            
-            # Calculate difference and scale
-            ela_image = ImageChops.difference(original, compressed)
-            extrema = ela_image.getextrema()
-            max_diff = max([ex[1] for ex in extrema])
-            if max_diff == 0:
-                max_diff = 1
-            scale_factor = 255.0 / max_diff
-            
-            # Scale difference image
-            ela_image = ImageChops.multiply(ela_image, Image.new('RGB', ela_image.size, (scale_factor, scale_factor, scale_factor)))
-            
-            # Remove temporary file
-            if os.path.exists(compressed_path):
-                os.remove(compressed_path)
-            
-            # Convert to numpy array
-            ela_array = np.array(ela_image)
-            
-            return ela_array, meta_info
+            # Open image with PIL
+            image = Image.open(image_path).convert('RGB')
+            return image
             
         except Exception as e:
-            logger.error(f"Error applying ELA to image {image_path}: {e}")
-            # Return original image if ELA fails
-            return np.array(Image.open(image_path).convert('RGB')), meta_info
+            self.logger.error(f"Error loading image {image_path}: {str(e)}")
+            raise ValueError(f"Failed to load image: {str(e)}")
+    
+    def _normalize_image(self, image: Image.Image) -> np.ndarray:
+        """
+        Normalize an image for model input.
+        
+        Args:
+            image: PIL Image to normalize
+            
+        Returns:
+            Normalized image as numpy array
+        """
+        # Resize to target size
+        image = image.resize(self.target_size, Image.LANCZOS)
+        
+        # Convert to numpy array
+        img_array = np.array(image)
+        
+        # Normalize pixel values to [0, 1]
+        normalized = img_array.astype(np.float32) / 255.0
+        
+        # Convert to model expected format
+        # For most models: (channels, height, width)
+        normalized = normalized.transpose(2, 0, 1)
+        
+        return normalized
+    
+    def _extract_faces(self, image: Image.Image) -> Tuple[List[np.ndarray], List[List[float]]]:
+        """
+        Extract faces from an image.
+        
+        Args:
+            image: PIL Image to extract faces from
+            
+        Returns:
+            Tuple containing:
+            - List of normalized face images as numpy arrays
+            - List of face bounding boxes [x1, y1, x2, y2, confidence]
+        """
+        # Detect faces using MTCNN
+        boxes, probs = self.face_detector.detect(image)
+        
+        if boxes is None:
+            return [], []
+        
+        faces = []
+        face_boxes = []
+        
+        for i, (box, prob) in enumerate(zip(boxes, probs)):
+            if prob < self.face_detection_threshold:
+                continue
+                
+            # Extract face region with some margin
+            x1, y1, x2, y2 = [int(coord) for coord in box]
+            
+            # Add margin (10% of face size)
+            h, w = y2 - y1, x2 - x1
+            margin_h, margin_w = int(0.1 * h), int(0.1 * w)
+            
+            # Ensure boundaries are within image
+            y1_margin = max(0, y1 - margin_h)
+            x1_margin = max(0, x1 - margin_w)
+            y2_margin = min(image.height, y2 + margin_h)
+            x2_margin = min(image.width, x2 + margin_w)
+            
+            # Crop face region
+            face = image.crop((x1_margin, y1_margin, x2_margin, y2_margin))
+            
+            # Normalize face
+            normalized_face = self._normalize_image(face)
+            
+            faces.append(normalized_face)
+            face_boxes.append([x1_margin, y1_margin, x2_margin, y2_margin, prob])
+        
+        return faces, face_boxes
+    
+    def apply_transformations(self, image: Union[Image.Image, np.ndarray], 
+                             transformations: List[str] = None) -> np.ndarray:
+        """
+        Apply a series of transformations to an image.
+        
+        Args:
+            image: PIL Image or numpy array to transform
+            transformations: List of transformation names to apply
+                Options: 'flip', 'rotate', 'color_jitter', 'noise'
+            
+        Returns:
+            Transformed image as numpy array
+        """
+        if transformations is None:
+            transformations = []
+            
+        # Convert to PIL Image if numpy array
+        if isinstance(image, np.ndarray):
+            # If the array has shape (C, H, W), transpose to (H, W, C)
+            if image.shape[0] == 3 and len(image.shape) == 3:
+                image = image.transpose(1, 2, 0)
+                
+            image = Image.fromarray((image * 255).astype(np.uint8))
+        
+        # Apply transformations
+        for transform in transformations:
+            if transform == 'flip':
+                # Horizontal flip
+                image = image.transpose(Image.FLIP_LEFT_RIGHT)
+                
+            elif transform == 'rotate':
+                # Random rotation -15 to 15 degrees
+                angle = np.random.uniform(-15, 15)
+                image = image.rotate(angle, resample=Image.BILINEAR, expand=False)
+                
+            elif transform == 'color_jitter':
+                # Color jitter (brightness, contrast, saturation)
+                from PIL import ImageEnhance
+                
+                # Brightness
+                factor = np.random.uniform(0.8, 1.2)
+                image = ImageEnhance.Brightness(image).enhance(factor)
+                
+                # Contrast
+                factor = np.random.uniform(0.8, 1.2)
+                image = ImageEnhance.Contrast(image).enhance(factor)
+                
+                # Saturation
+                factor = np.random.uniform(0.8, 1.2)
+                image = ImageEnhance.Color(image).enhance(factor)
+                
+            elif transform == 'noise':
+                # Add Gaussian noise
+                img_array = np.array(image).astype(np.float32)
+                noise = np.random.normal(0, 5, img_array.shape)
+                noisy_img = np.clip(img_array + noise, 0, 255).astype(np.uint8)
+                image = Image.fromarray(noisy_img)
+        
+        # Normalize and return as numpy array
+        return self._normalize_image(image)
+
+def preprocess_batch(image_paths: List[str], 
+                    processor: Optional[ImagePreprocessor] = None,
+                    extract_faces: bool = True,
+                    batch_size: int = 32) -> List[Dict[str, Any]]:
+    """
+    Preprocess a batch of images.
+    
+    Args:
+        image_paths: List of paths to image files
+        processor: Optional ImagePreprocessor instance
+        extract_faces: Whether to extract faces from images
+        batch_size: Number of images to process at once
+        
+    Returns:
+        List of preprocessing results for each image
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Preprocessing batch of {len(image_paths)} images")
+    
+    # Create processor if not provided
+    if processor is None:
+        processor = ImagePreprocessor()
+    
+    results = []
+    
+    # Process in batches
+    for i in range(0, len(image_paths), batch_size):
+        batch = image_paths[i:i+batch_size]
+        
+        for image_path in batch:
+            try:
+                result = processor.preprocess(image_path, extract_faces=extract_faces)
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Error preprocessing {image_path}: {str(e)}")
+                # Add empty result with error message
+                results.append({
+                    "error": str(e),
+                    "image_path": image_path
+                })
+        
+        logger.debug(f"Processed {min(i+batch_size, len(image_paths))}/{len(image_paths)} images")
+    
+    return results

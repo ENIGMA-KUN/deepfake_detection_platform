@@ -1,0 +1,4 @@
+2025-04-16 12:12:51,930 - root - INFO - Logging initialized at level INFO
+2025-04-16 12:12:51,931 - root - INFO - Log file: C:\Users\chakr\Documents\GitHub\deepfake_detection_platform\logs\deepfake_detection_20250416_121251.log
+2025-04-16 12:12:51,931 - __main__ - INFO - Starting Deepfake Detection Platform
+2025-04-16 12:12:51,931 - app.core.processor - INFO - MediaProcessor initialized

@@ -1,79 +1,52 @@
-# Deepfake Detection Platform Configuration
+## Deepfake Detection Platform Configuration
 
-# System settings
-system:
+# General settings
+general:
+  log_level: INFO
   debug_mode: false
-  log_level: "INFO"
-  temp_directory: "./temp"
-  cache_directory: "./models/cache"
-  max_workers: 4
+  result_cache_size: 100
+  max_threads: 4
+  temp_dir: "./temp"
 
-# UI configuration
-ui:
-  theme: "tron-legacy"
-  default_tab: "image"
-  max_upload_size_mb: 100
-  supported_formats:
-    image:
-      - ".jpg"
-      - ".jpeg"
-      - ".png"
-      - ".gif"
-      - ".bmp"
-    audio:
-      - ".wav" 
-      - ".mp3"
-      - ".flac"
-    video:
-      - ".mp4"
-      - ".avi"
-      - ".mov"
-
-# Processing settings
-processing:
-  batch_size: 8
-  use_gpu: true
-  queue_max_size: 100
-  timeout_seconds: 300
-  preprocessing:
-    image:
-      resize_width: 224
-      resize_height: 224
-      normalize: true
-    audio:
-      sample_rate: 16000
-      max_duration_seconds: 30
-    video:
-      resize_width: 224
-      resize_height: 224
-      fps: 30
-      max_duration_seconds: 30
-
-# Models configuration
+# Model settings
 models:
   image:
     model_name: "google/vit-base-patch16-224"
     confidence_threshold: 0.7
-    use_ensemble: true
+    use_gpu: true
+    batch_size: 16
+  
   audio:
     model_name: "facebook/wav2vec2-large-960h"
     confidence_threshold: 0.65
-    spectrogram_analysis: true
+    use_gpu: true
+    sample_rate: 16000
+  
   video:
-    model_name: "timesformer"  # or "genconvit" if available
-    confidence_threshold: 0.6
-    frame_analysis: true
-    temporal_window: 16
+    frame_model_name: "google/vit-base-patch16-224"
+    temporal_model_name: "facebook/timesformer-base-finetuned-k400"
+    confidence_threshold: 0.75
+    use_gpu: true
+    frames_per_second: 5
+    segment_length: 10
 
-# Reporting configuration
+# User interface
+ui:
+  theme: "tron_legacy"
+  max_history_items: 20
+  auto_refresh: true
+  default_tab: "image"
+
+# Processing
+processing:
+  queue_size: 10
+  auto_save_results: true
+  save_processed_media: false
+  detection_timeout: 300
+
+# Reporting
 reports:
   save_directory: "./reports/output"
-  include_visualization: true
-  confidence_colors:
-    high: "#00FF00"
-    medium: "#FFFF00"
-    low: "#FF0000"
-  export_formats:
-    - "html"
-    - "pdf"
-    - "csv"
+  generate_pdf: true
+  include_visualizations: true
+  confidence_decimal_places: 2

@@ -1,0 +1,73 @@
+{
+  "implemented_files": [
+    "README.md",
+    "requirements.txt",
+    "config.yaml",
+    "app/__init__.py",
+    "app/main.py",
+    "app/interface/__init__.py",
+    "app/interface/app.py",
+    "app/core/__init__.py",
+    "app/core/processor.py",
+    "app/utils/__init__.py",
+    "app/utils/logging_utils.py",
+    "app/utils/visualization.py",
+    "app/interface/static/styles.css",
+    "app/interface/static/logo.png",
+    "app/interface/components/image_tab.py",
+    "app/interface/components/audio_tab.py",
+    "app/interface/components/video_tab.py",
+    "app/interface/components/reports_tab.py",
+    "detectors/__init__.py",
+    "detectors/base_detector.py",
+    "detectors/image_detector/__init__.py",
+    "detectors/image_detector/vit_detector.py",
+    "detectors/audio_detector/__init__.py",
+    "detectors/audio_detector/wav2vec_detector.py",
+    "detectors/video_detector/__init__.py",
+    "detectors/video_detector/genconvit.py",
+    "models/__init__.py",
+    "models/model_loader.py",
+    "data/__init__.py",
+    "data/preprocessing/__init__.py",
+    "data/preprocessing/image_prep.py",
+    "data/preprocessing/audio_prep.py",
+    "data/preprocessing/video_prep.py",
+    "data/augmentation/__init__.py",
+    "tests/__init__.py"
+  ],
+  "directory_structure": {
+    "app": {
+      "interface": {
+        "components": {},
+        "static": {}
+      },
+      "core": {},
+      "utils": {}
+    },
+    "detectors": {
+      "image_detector": {},
+      "audio_detector": {},
+      "video_detector": {}
+    },
+    "models": {
+      "cache": {}
+    },
+    "data": {
+      "preprocessing": {},
+      "augmentation": {}
+    },
+    "reports": {
+      "templates": {},
+      "output": {}
+    },
+    "tests": {
+      "test_data": {}
+    },
+    "docs": {},
+    "memory": {
+      "implementations": {}
+    }
+  },
+  "last_updated": "2025-04-16T11:50:55-07:00"
+}

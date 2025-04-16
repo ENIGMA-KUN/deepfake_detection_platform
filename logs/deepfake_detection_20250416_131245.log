@@ -1,0 +1,76 @@
+2025-04-16 13:12:45,698 - root - INFO - Logging initialized at level INFO
+2025-04-16 13:12:45,699 - root - INFO - Log file: C:\Users\chakr\Documents\GitHub\deepfake_detection_platform\logs\deepfake_detection_20250416_131245.log
+2025-04-16 13:12:45,699 - __main__ - INFO - Starting Deepfake Detection Platform
+2025-04-16 13:12:51,840 - app.core.processor - INFO - Loading detector models...
+2025-04-16 13:12:51,841 - detectors.image_detector.vit_detector - INFO - Using device: cpu
+2025-04-16 13:12:51,855 - detectors.audio_detector.wav2vec_detector - INFO - Using device: cpu
+2025-04-16 13:12:51,855 - detectors.video_detector.genconvit - INFO - Using device: cpu
+2025-04-16 13:12:51,855 - app.core.processor - INFO - All detector models loaded successfully
+2025-04-16 13:12:51,856 - app.core.processor - INFO - MediaProcessor initialized
+2025-04-16 13:12:51,883 - dash.dash - INFO - Dash is running on http://0.0.0.0:8050/
+
+2025-04-16 13:12:53,244 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8050
+ * Running on http://192.168.0.88:8050
+2025-04-16 13:12:53,244 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-04-16 13:14:18,784 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "GET / HTTP/1.1" 200 -
+2025-04-16 13:14:18,800 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "[36mGET /assets/styles.css?m=1744829608.2109635 HTTP/1.1[0m" 304 -
+2025-04-16 13:14:18,848 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "GET /_dash-layout HTTP/1.1" 200 -
+2025-04-16 13:14:18,848 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "GET /_dash-dependencies HTTP/1.1" 200 -
+2025-04-16 13:14:18,994 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "[33mGET /assets/vit_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:14:18,994 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "[33mGET /assets/wav2vec_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:14:18,995 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:18] "[33mGET /assets/genconvit_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:14:19,018 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "GET /_favicon.ico?v=3.0.3 HTTP/1.1" 200 -
+2025-04-16 13:14:19,024 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,026 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,029 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,030 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,033 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,034 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,035 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,039 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,040 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:19,042 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:19] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:38,269 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:38] "[36mGET /_dash-component-suites/dash/dcc/async-upload.js HTTP/1.1[0m" 304 -
+2025-04-16 13:14:44,130 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:44] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:14:46,273 - app.core.processor - INFO - Processing image file: ./temp\1721892116942.jpeg
+2025-04-16 13:14:46,273 - detectors.image_detector.vit_detector - INFO - Loading ViT model: google/vit-base-patch16-224
+2025-04-16 13:14:46,942 - detectors.image_detector.vit_detector - INFO - ViT model loaded successfully
+2025-04-16 13:14:47,081 - app.core.processor - INFO - Processed ./temp\1721892116942.jpeg in 0.81s
+2025-04-16 13:14:47,083 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:14:47] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:15:08,749 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:15:08] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:15:15,442 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:15:15] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:15:16,508 - app.core.processor - INFO - Processing audio file: ./temp\What The IShowSpeed Chinese Reaction Song Lyrics Actually Say In English #shorts #ishowspeed #lyrics.mp3
+2025-04-16 13:15:16,508 - detectors.audio_detector.wav2vec_detector - INFO - Loading Wav2Vec2 model: facebook/wav2vec2-large-960h
+2025-04-16 13:16:47,049 - detectors.audio_detector.wav2vec_detector - INFO - Wav2Vec2 model loaded successfully
+2025-04-16 13:16:54,768 - app.core.processor - INFO - Processed ./temp\What The IShowSpeed Chinese Reaction Song Lyrics Actually Say In English #shorts #ishowspeed #lyrics.mp3 in 98.26s
+2025-04-16 13:16:54,770 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:16:54] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:16:54,779 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:16:54] "[33mGET /assets/spectrogram_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:19:27,935 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:19:27] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:19:37,380 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:19:37] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:19:39,813 - app.core.processor - INFO - Processing video file: ./temp\Y2meta.app-the perfect girl-(1080p).mp4
+2025-04-16 13:19:39,813 - detectors.video_detector.genconvit - INFO - Loading frame analysis model: google/vit-base-patch16-224
+2025-04-16 13:19:40,507 - detectors.video_detector.genconvit - INFO - Video detection models loaded successfully
+2025-04-16 13:19:51,999 - app.core.processor - INFO - Processing video file: ./temp\Y2meta.app-the perfect girl-(1080p).mp4
+2025-04-16 13:20:03,002 - app.core.processor - INFO - Processed ./temp\Y2meta.app-the perfect girl-(1080p).mp4 in 23.19s
+2025-04-16 13:20:03,006 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:20:03] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:20:14,579 - app.core.processor - INFO - Processed ./temp\Y2meta.app-the perfect girl-(1080p).mp4 in 22.58s
+2025-04-16 13:20:14,584 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:20:14] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:20:14,598 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:20:14] "[33mGET /assets/frame_analysis_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:24:51,507 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:24:51] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:34:14,349 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:34:14] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:34:21,116 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:34:21] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:35:05,015 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:35:05] "[33mGET /assets/vit_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:35:05,017 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:35:05] "[33mGET /assets/wav2vec_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:35:05,018 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:35:05] "[33mGET /assets/genconvit_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:35:42,120 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:35:42] "[33mGET /assets/spectrogram_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:35:43,969 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:35:43] "GET /_favicon.ico?v=3.0.3 HTTP/1.1" 200 -
+2025-04-16 13:35:59,974 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:35:59] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:36:20,982 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:36:20] "[33mGET /assets/frame_analysis_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:36:22,881 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:36:22] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:36:33,366 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:36:33] "[33mGET /assets/spectrogram_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:36:38,724 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:36:38] "POST /_dash-update-component HTTP/1.1" 200 -
+2025-04-16 13:37:38,046 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:37:38] "[33mGET /assets/wav2vec_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:37:38,046 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:37:38] "[33mGET /assets/genconvit_visualization.png HTTP/1.1[0m" 404 -
+2025-04-16 13:37:38,050 - werkzeug - INFO - 127.0.0.1 - - [16/Apr/2025 13:37:38] "[33mGET /assets/vit_visualization.png HTTP/1.1[0m" 404 -

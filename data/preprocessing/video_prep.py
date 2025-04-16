@@ -1,497 +1,450 @@
+"""
+Video preprocessing module for deepfake detection.
+"""
 import os
-import cv2
-import numpy as np
-import tempfile
-import torch
-from typing import Dict, Tuple, List, Optional, Union
 import logging
+import numpy as np
+import cv2
+import av
+from typing import Dict, Any, List, Tuple, Optional, Union
 from PIL import Image
-from torchvision import transforms
+import torch
+from facenet_pytorch import MTCNN
 
-logger = logging.getLogger(__name__)
+from data.preprocessing.image_prep import ImagePreprocessor
+from data.preprocessing.audio_prep import AudioPreprocessor
 
 class VideoPreprocessor:
-    """Class for preprocessing video data for deepfake detection."""
+    """
+    Preprocessor for video data to prepare for deepfake detection.
+    Handles operations like frame extraction, face detection, and audio separation.
+    """
     
-    def __init__(self, config=None):
+    def __init__(self, frames_per_second: int = 5,
+                 target_frame_size: Tuple[int, int] = (224, 224),
+                 face_detection_threshold: float = 0.9,
+                 segment_duration: float = 10.0,
+                 device: str = None):
         """
         Initialize the video preprocessor.
         
         Args:
-            config (dict, optional): Configuration parameters for preprocessing
+            frames_per_second: Number of frames to extract per second
+            target_frame_size: Target size for extracted frames (height, width)
+            face_detection_threshold: Confidence threshold for face detection
+            segment_duration: Duration of video segments in seconds
+            device: Device to use for processing ('cuda' or 'cpu')
         """
-        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
         
-        # Target parameters for video preprocessing
-        self.target_fps = self.config.get('target_fps', 30)  # Target frames per second
-        self.target_height = self.config.get('target_height', 224)  # Target frame height
-        self.target_width = self.config.get('target_width', 224)  # Target frame width
-        self.max_frames = self.config.get('max_frames', 150)  # Maximum number of frames to process
-        self.normalize = self.config.get('normalize', True)  # Whether to normalize frames
-        self.extract_audio = self.config.get('extract_audio', False)  # Whether to extract audio from video
-        self.face_detection = self.config.get('face_detection', False)  # Whether to detect faces in frames
+        # Determine device
+        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Initialize face detector if enabled
-        if self.face_detection:
-            self._init_face_detector()
+        # Set parameters
+        self.frames_per_second = frames_per_second
+        self.target_frame_size = target_frame_size
+        self.face_detection_threshold = face_detection_threshold
+        self.segment_duration = segment_duration
         
-        # Default normalization values (ImageNet)
-        self.mean = self.config.get('mean', [0.485, 0.456, 0.406])
-        self.std = self.config.get('std', [0.229, 0.224, 0.225])
+        # Initialize image and audio preprocessors
+        self.image_processor = ImagePreprocessor(
+            face_detection_threshold=face_detection_threshold,
+            target_size=target_frame_size,
+            device=self.device
+        )
         
-        # Create transform pipeline for frames
-        self._create_transforms()
+        self.audio_processor = AudioPreprocessor(
+            target_sample_rate=16000,
+            segment_duration=segment_duration
+        )
+        
+        self.logger.info(f"VideoPreprocessor initialized (device: {self.device})")
     
-    def _init_face_detector(self):
-        """Initialize the face detector model."""
-        try:
-            # Load OpenCV's face detector
-            face_cascade_path = self.config.get(
-                'face_cascade_path', 
-                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            )
-            self.face_cascade = cv2.CascadeClassifier(face_cascade_path)
-            
-            # Check if face detector was loaded successfully
-            if self.face_cascade.empty():
-                logger.warning("Face detector could not be loaded. Face detection disabled.")
-                self.face_detection = False
-        except Exception as e:
-            logger.error(f"Error initializing face detector: {e}")
-            self.face_detection = False
-    
-    def _create_transforms(self):
-        """Create the transformation pipeline for preprocessing frames."""
-        transform_list = []
-        
-        # Resize transform
-        transform_list.append(transforms.Resize((self.target_height, self.target_width)))
-        
-        # Convert to tensor
-        transform_list.append(transforms.ToTensor())
-        
-        # Normalize if enabled
-        if self.normalize:
-            transform_list.append(transforms.Normalize(self.mean, self.std))
-        
-        self.transform = transforms.Compose(transform_list)
-    
-    def preprocess(self, video_path: str, return_tensor: bool = True) -> Tuple[Union[np.ndarray, torch.Tensor], Dict]:
+    def preprocess(self, video_path: str, extract_audio: bool = True,
+                  detect_faces: bool = True, segment_video: bool = True) -> Dict[str, Any]:
         """
         Preprocess a video file for deepfake detection.
         
         Args:
-            video_path (str): Path to the video file
-            return_tensor (bool): If True, return torch tensor; otherwise NumPy array
+            video_path: Path to the video file
+            extract_audio: Whether to extract and process audio
+            detect_faces: Whether to detect faces in frames
+            segment_video: Whether to segment the video into fixed-length chunks
             
         Returns:
-            preprocessed_frames: Preprocessed video frames as tensor or NumPy array
-            meta_info (dict): Additional information about preprocessing
+            Dictionary containing:
+            - frames: List of extracted frames
+            - frame_times: List of frame timestamps
+            - faces: Dict mapping frame indices to detected faces (if detect_faces=True)
+            - audio_features: Dict of audio features (if extract_audio=True)
+            - segments: List of video segment info (if segment_video=True)
+            - metadata: Additional preprocessing metadata
+            
+        Raises:
+            FileNotFoundError: If the video file doesn't exist
+            ValueError: If the video cannot be processed
+        """
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+            
+        try:
+            # Extract frames and metadata
+            frames, frame_times, video_info = self._extract_frames(video_path)
+            
+            if not frames:
+                raise ValueError(f"No frames could be extracted from {video_path}")
+            
+            result = {
+                "frames": frames,
+                "frame_times": frame_times,
+                "metadata": {
+                    "video_info": video_info,
+                    "frames_extracted": len(frames),
+                    "target_frame_size": self.target_frame_size,
+                    "filename": os.path.basename(video_path)
+                }
+            }
+            
+            # Detect faces if requested
+            if detect_faces:
+                faces_by_frame = self._detect_faces_in_frames(frames)
+                result["faces"] = faces_by_frame
+                result["metadata"]["total_faces_detected"] = sum(len(faces) for faces in faces_by_frame.values())
+            
+            # Extract and process audio if requested
+            if extract_audio:
+                audio_features = self._extract_audio_features(video_path)
+                result["audio_features"] = audio_features
+                
+                # Add audio-video sync analysis
+                if audio_features:
+                    result["metadata"]["has_audio"] = True
+                    result["av_sync_analysis"] = self._analyze_audio_video_sync(
+                        frame_times, audio_features.get("waveform", None)
+                    )
+                else:
+                    result["metadata"]["has_audio"] = False
+            
+            # Segment video if requested
+            if segment_video:
+                segments = self._segment_video(frames, frame_times, video_info["fps"])
+                result["segments"] = segments
+                result["metadata"]["num_segments"] = len(segments)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error preprocessing video {video_path}: {str(e)}")
+            raise ValueError(f"Failed to preprocess video: {str(e)}")
+    
+    def _extract_frames(self, video_path: str) -> Tuple[List[np.ndarray], List[float], Dict[str, Any]]:
+        """
+        Extract frames from a video at specified FPS.
+        
+        Args:
+            video_path: Path to the video file
+            
+        Returns:
+            Tuple containing:
+            - List of frames as numpy arrays
+            - List of frame timestamps
+            - Dictionary with video info (fps, duration, etc.)
         """
         try:
-            # Open video file
-            cap = cv2.VideoCapture(video_path)
+            # Open the video file
+            container = av.open(video_path)
             
-            if not cap.isOpened():
-                raise ValueError(f"Could not open video file: {video_path}")
+            # Get video stream
+            video_stream = next((s for s in container.streams if s.type == 'video'), None)
             
-            # Get video properties
-            original_fps = cap.get(cv2.CAP_PROP_FPS)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            original_duration = total_frames / original_fps if original_fps > 0 else 0
+            if video_stream is None:
+                raise ValueError(f"No video stream found in {video_path}")
             
-            # Store original information
-            meta_info = {
-                'original_fps': original_fps,
-                'original_total_frames': total_frames,
-                'original_width': original_width,
-                'original_height': original_height,
-                'original_duration': original_duration,
-                'preprocessing_steps': [],
-                'faces_detected': 0,
-                'face_frames': []
+            # Get video info
+            fps = float(video_stream.average_rate)
+            duration = float(video_stream.duration * video_stream.time_base)
+            width = video_stream.width
+            height = video_stream.height
+            
+            video_info = {
+                "fps": fps,
+                "duration": duration,
+                "width": width,
+                "height": height,
+                "total_frames": video_stream.frames,
+                "codec_name": video_stream.codec_context.name
             }
-            meta_info['preprocessing_steps'].append('load_video')
             
-            # Calculate frame sampling
-            sample_every = max(1, int(original_fps / self.target_fps))
-            max_output_frames = min(self.max_frames, total_frames // sample_every)
+            # Calculate frame interval based on desired sampling rate
+            frame_interval = int(fps / self.frames_per_second)
+            frame_interval = max(1, frame_interval)  # Ensure at least 1
             
-            # Initialize list to store frames
+            # Extract frames
             frames = []
-            frame_count = 0
-            sampled_count = 0
+            frame_times = []
             
-            # Read frames
-            while True:
-                ret, frame = cap.read()
-                
-                if not ret:
-                    break
-                
-                # Sample frames based on target FPS
-                if frame_count % sample_every == 0 and sampled_count < max_output_frames:
-                    # Convert BGR to RGB
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            for frame_idx, frame in enumerate(container.decode(video=0)):
+                if frame_idx % frame_interval == 0:
+                    # Convert frame to numpy array
+                    img = frame.to_image()
+                    img = img.resize(self.target_frame_size, Image.LANCZOS)
+                    img_np = np.array(img)
                     
-                    # Detect faces if enabled
-                    if self.face_detection:
-                        face_frame, face_info = self._detect_and_extract_face(frame_rgb, frame_count)
-                        
-                        if face_info['face_detected']:
-                            # Use the face frame instead
-                            frame_rgb = face_frame
-                            meta_info['faces_detected'] += 1
-                            meta_info['face_frames'].append(frame_count)
+                    # Convert from RGB to BGR (for OpenCV compatibility)
+                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
                     
-                    # Convert to PIL Image for transformation
-                    pil_frame = Image.fromarray(frame_rgb)
-                    
-                    # Apply transforms
-                    if return_tensor:
-                        processed_frame = self.transform(pil_frame)
-                    else:
-                        # Resize without normalization
-                        pil_frame = pil_frame.resize((self.target_width, self.target_height))
-                        processed_frame = np.array(pil_frame)
-                    
-                    frames.append(processed_frame)
-                    sampled_count += 1
-                
-                frame_count += 1
+                    frames.append(img_np)
+                    frame_times.append(float(frame.pts * video_stream.time_base))
             
-            # Release video capture
-            cap.release()
+            return frames, frame_times, video_info
             
-            # Update meta info
-            meta_info['sampled_frames'] = sampled_count
-            meta_info['preprocessing_steps'].append('sample_frames')
-            
-            if return_tensor:
-                # Stack frames into tensor
-                frames_tensor = torch.stack(frames)
-                meta_info['preprocessing_steps'].append('to_tensor')
-                
-                if self.normalize:
-                    meta_info['preprocessing_steps'].append('normalize')
-                
-                return frames_tensor, meta_info
-            else:
-                # Stack frames into numpy array
-                frames_array = np.array(frames)
-                return frames_array, meta_info
-                
         except Exception as e:
-            logger.error(f"Error preprocessing video {video_path}: {e}")
-            raise
+            self.logger.error(f"Error extracting frames from video: {str(e)}")
+            raise ValueError(f"Failed to extract frames from video: {str(e)}")
     
-    def _detect_and_extract_face(self, frame: np.ndarray, frame_idx: int) -> Tuple[np.ndarray, Dict]:
+    def _detect_faces_in_frames(self, frames: List[np.ndarray]) -> Dict[int, List[Dict[str, Any]]]:
         """
-        Detect and extract face from a video frame.
+        Detect faces in a list of video frames.
         
         Args:
-            frame (np.ndarray): Input frame
-            frame_idx (int): Frame index
+            frames: List of video frames as numpy arrays
             
         Returns:
-            np.ndarray: Frame with extracted face or original if no face found
-            dict: Information about detected face
+            Dictionary mapping frame indices to lists of detected faces
         """
-        # Convert to grayscale for face detection
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        faces_by_frame = {}
         
-        # Detect faces
-        faces = self.face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30)
-        )
+        for i, frame in enumerate(frames):
+            # Convert BGR to RGB (for PIL compatibility)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Convert to PIL Image
+            pil_image = Image.fromarray(frame_rgb)
+            
+            # Process with image preprocessor
+            try:
+                result = self.image_processor.preprocess(pil_image, extract_faces=True)
+                
+                if "faces" in result and "face_boxes" in result:
+                    faces = []
+                    for j, (face, bbox) in enumerate(zip(result["faces"], result["face_boxes"])):
+                        faces.append({
+                            "face_index": j,
+                            "bbox": bbox[:4],  # x1, y1, x2, y2
+                            "confidence": bbox[4],
+                            "face_array": face
+                        })
+                    
+                    faces_by_frame[i] = faces
+                else:
+                    faces_by_frame[i] = []
+                    
+            except Exception as e:
+                self.logger.warning(f"Error detecting faces in frame {i}: {str(e)}")
+                faces_by_frame[i] = []
         
-        face_info = {
-            'face_detected': len(faces) > 0,
-            'frame_idx': frame_idx,
-            'num_faces': len(faces),
-            'face_regions': []
-        }
-        
-        # If faces found, extract the largest one
-        if len(faces) > 0:
-            # Find largest face by area
-            largest_face_idx = np.argmax([w * h for (x, y, w, h) in faces])
-            x, y, w, h = faces[largest_face_idx]
-            
-            # Add padding around face (20%)
-            padding_x = int(w * 0.2)
-            padding_y = int(h * 0.2)
-            
-            # Ensure coordinates are within image bounds
-            x_start = max(0, x - padding_x)
-            y_start = max(0, y - padding_y)
-            x_end = min(frame.shape[1], x + w + padding_x)
-            y_end = min(frame.shape[0], y + h + padding_y)
-            
-            # Extract face region
-            face_region = frame[y_start:y_end, x_start:x_end]
-            
-            # Store face location
-            face_info['face_regions'].append({
-                'x': x_start,
-                'y': y_start,
-                'width': x_end - x_start,
-                'height': y_end - y_start,
-                'is_largest': True
-            })
-            
-            return face_region, face_info
-        
-        # If no face found, return original frame
-        return frame, face_info
+        return faces_by_frame
     
-    def extract_audio(self, video_path: str, audio_output_path: str = None) -> Tuple[str, Dict]:
+    def _extract_audio_features(self, video_path: str) -> Optional[Dict[str, Any]]:
         """
-        Extract audio from a video file.
+        Extract audio from video and compute features.
         
         Args:
-            video_path (str): Path to the video file
-            audio_output_path (str, optional): Path to save the extracted audio
+            video_path: Path to the video file
             
         Returns:
-            str: Path to the extracted audio file
-            dict: Meta information about the extraction
+            Dictionary of audio features or None if no audio stream
         """
         try:
-            import subprocess
+            # Extract audio to temporary file
+            temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
             
-            # Create a temporary file if no output path provided
-            if audio_output_path is None:
-                temp_dir = tempfile.gettempdir()
-                audio_output_path = os.path.join(temp_dir, f"extracted_audio_{os.path.basename(video_path)}.wav")
+            temp_audio = os.path.join(temp_dir, f"{os.path.splitext(os.path.basename(video_path))[0]}_audio.wav")
             
-            # Extract audio using ffmpeg
-            command = [
-                'ffmpeg',
-                '-i', video_path,
-                '-q:a', '0',
-                '-map', 'a',
-                '-c:a', 'pcm_s16le',  # Uncompressed WAV format
-                audio_output_path,
-                '-y'  # Overwrite if exists
-            ]
+            # Check if video has audio stream
+            container = av.open(video_path)
+            audio_stream = next((s for s in container.streams if s.type == 'audio'), None)
             
-            # Run the command
-            result = subprocess.run(command, capture_output=True)
+            if audio_stream is None:
+                self.logger.info(f"No audio stream found in {video_path}")
+                return None
             
-            # Check if successful
-            if result.returncode != 0:
-                error_message = result.stderr.decode('utf-8')
-                logger.error(f"Error extracting audio: {error_message}")
-                raise RuntimeError(f"Failed to extract audio: {error_message}")
+            # Extract audio using ffmpeg via PyAV
+            output = av.open(temp_audio, 'w')
+            output_stream = output.add_stream('pcm_s16le', rate=16000, layout='mono')
             
-            # Meta information
-            meta_info = {
-                'source_video': video_path,
-                'audio_path': audio_output_path,
-                'format': 'wav',
-                'extraction_successful': True
-            }
+            for frame in container.decode(audio=0):
+                # Resample frame to desired sample rate
+                frame.pts = None
+                output.mux(output_stream.encode(frame))
             
-            return audio_output_path, meta_info
+            # Flush encoder
+            output.mux(output_stream.encode(None))
+            output.close()
             
-        except Exception as e:
-            logger.error(f"Error extracting audio from {video_path}: {e}")
-            
-            # Meta information for failed extraction
-            meta_info = {
-                'source_video': video_path,
-                'audio_path': None,
-                'extraction_successful': False,
-                'error': str(e)
-            }
-            
-            return None, meta_info
-    
-    def compute_motion_metrics(self, frames: Union[np.ndarray, torch.Tensor]) -> Dict[str, float]:
-        """
-        Compute motion-based metrics from video frames.
-        
-        Args:
-            frames (np.ndarray or torch.Tensor): Video frames
-            
-        Returns:
-            dict: Dictionary of motion metrics
-        """
-        # Convert tensor to numpy if needed
-        if torch.is_tensor(frames):
-            # Convert to numpy (CPU tensor to numpy, remove normalization)
-            frames_np = frames.cpu().numpy()
-            if self.normalize:
-                # Reverse normalization
-                for i in range(3):
-                    frames_np[:, i] = frames_np[:, i] * self.std[i] + self.mean[i]
-                frames_np = np.clip(frames_np, 0, 1)
-            
-            # Rearrange from [frames, channels, height, width] to [frames, height, width, channels]
-            frames_np = np.transpose(frames_np, (0, 2, 3, 1))
-            
-            # Convert to uint8 (0-255)
-            frames_np = (frames_np * 255).astype(np.uint8)
-        else:
-            frames_np = frames
-        
-        # Compute frame differences
-        frame_diffs = []
-        for i in range(1, len(frames_np)):
-            # Convert to grayscale
-            prev_frame = cv2.cvtColor(frames_np[i-1], cv2.COLOR_RGB2GRAY)
-            curr_frame = cv2.cvtColor(frames_np[i], cv2.COLOR_RGB2GRAY)
-            
-            # Compute absolute difference
-            diff = cv2.absdiff(prev_frame, curr_frame)
-            frame_diffs.append(np.mean(diff))
-        
-        # Compute metrics
-        if frame_diffs:
-            mean_motion = np.mean(frame_diffs)
-            std_motion = np.std(frame_diffs)
-            max_motion = np.max(frame_diffs)
-        else:
-            mean_motion = 0
-            std_motion = 0
-            max_motion = 0
-        
-        # Compute optical flow (sparse Lucas-Kanade)
-        flow_magnitudes = []
-        
-        if len(frames_np) > 1:
-            # Parameters for Lucas-Kanade optical flow
-            lk_params = dict(
-                winSize=(15, 15),
-                maxLevel=2,
-                criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
+            # Process audio with audio preprocessor
+            audio_result = self.audio_processor.preprocess(
+                temp_audio, 
+                generate_spectrogram=True,
+                segment_audio=True
             )
             
-            # Get first frame and extract features
-            first_frame_gray = cv2.cvtColor(frames_np[0], cv2.COLOR_RGB2GRAY)
-            feature_params = dict(maxCorners=100, qualityLevel=0.3, minDistance=7, blockSize=7)
-            p0 = cv2.goodFeaturesToTrack(first_frame_gray, mask=None, **feature_params)
+            # Clean up temp file
+            try:
+                os.remove(temp_audio)
+            except:
+                pass
             
-            if p0 is not None:
-                for i in range(1, len(frames_np)):
-                    curr_frame_gray = cv2.cvtColor(frames_np[i], cv2.COLOR_RGB2GRAY)
-                    
-                    # Calculate optical flow
-                    p1, st, err = cv2.calcOpticalFlowPyrLK(first_frame_gray, curr_frame_gray, p0, None, **lk_params)
-                    
-                    if p1 is not None:
-                        # Select good points
-                        good_new = p1[st == 1]
-                        good_old = p0[st == 1]
-                        
-                        # Calculate flow magnitudes
-                        if len(good_new) > 0 and len(good_old) > 0:
-                            flow_mag = np.mean(np.sqrt(
-                                (good_new[:, 0] - good_old[:, 0])**2 + 
-                                (good_new[:, 1] - good_old[:, 1])**2
-                            ))
-                            flow_magnitudes.append(flow_mag)
-                        
-                        # Update previous frame and points
-                        first_frame_gray = curr_frame_gray.copy()
-                        p0 = good_new.reshape(-1, 1, 2)
+            return audio_result
+            
+        except Exception as e:
+            self.logger.warning(f"Error extracting audio from video: {str(e)}")
+            return None
+    
+    def _segment_video(self, frames: List[np.ndarray], frame_times: List[float], 
+                      fps: float) -> List[Dict[str, Any]]:
+        """
+        Segment video into fixed-length chunks.
         
-        # Compute flow metrics
-        if flow_magnitudes:
-            mean_flow = np.mean(flow_magnitudes)
-            std_flow = np.std(flow_magnitudes)
-            max_flow = np.max(flow_magnitudes)
-        else:
-            mean_flow = 0
-            std_flow = 0
-            max_flow = 0
+        Args:
+            frames: List of video frames
+            frame_times: List of frame timestamps
+            fps: Frames per second of the video
+            
+        Returns:
+            List of segment info dictionaries
+        """
+        segments = []
+        
+        # Calculate frames per segment
+        frames_per_segment = int(self.segment_duration * self.frames_per_second)
+        
+        # Create segments
+        for i in range(0, len(frames), frames_per_segment):
+            end_idx = min(i + frames_per_segment, len(frames))
+            
+            segment_frames = frames[i:end_idx]
+            segment_times = frame_times[i:end_idx]
+            
+            segment = {
+                "start_frame": i,
+                "end_frame": end_idx - 1,
+                "start_time": segment_times[0],
+                "end_time": segment_times[-1],
+                "frame_count": len(segment_frames),
+                "frames": segment_frames
+            }
+            
+            segments.append(segment)
+        
+        return segments
+    
+    def _analyze_audio_video_sync(self, frame_times: List[float], 
+                                 audio_waveform: Optional[np.ndarray]) -> Dict[str, Any]:
+        """
+        Analyze synchronization between audio and video.
+        
+        Args:
+            frame_times: List of frame timestamps
+            audio_waveform: Audio waveform or None
+            
+        Returns:
+            Dictionary with A/V sync analysis results
+        """
+        # This is a placeholder for actual A/V sync analysis
+        # In a real implementation, this would analyze the correlation between
+        # visual speech movements and audio speech patterns
+        
+        if audio_waveform is None:
+            return {"sync_score": 0, "has_audio": False}
         
         return {
-            'mean_motion': mean_motion,
-            'std_motion': std_motion,
-            'max_motion': max_motion,
-            'mean_flow': mean_flow,
-            'std_flow': std_flow,
-            'max_flow': max_flow
+            "sync_score": 1.0,  # Placeholder value
+            "has_audio": True,
+            "video_duration": frame_times[-1],
+            "audio_duration": len(audio_waveform) / 16000  # Assuming 16kHz sample rate
         }
     
-    def detect_scene_changes(self, frames: Union[np.ndarray, torch.Tensor], threshold: float = 30.0) -> List[int]:
+    def extract_optical_flow(self, frames: List[np.ndarray]) -> np.ndarray:
         """
-        Detect scene changes in video frames.
+        Calculate optical flow between consecutive frames.
         
         Args:
-            frames (np.ndarray or torch.Tensor): Video frames
-            threshold (float): Threshold for scene change detection
+            frames: List of video frames
             
         Returns:
-            list: Indices of frames where scene changes occur
+            Array of optical flow features
         """
-        # Convert tensor to numpy if needed
-        if torch.is_tensor(frames):
-            # Convert to numpy (CPU tensor to numpy, remove normalization)
-            frames_np = frames.cpu().numpy()
-            if self.normalize:
-                # Reverse normalization
-                for i in range(3):
-                    frames_np[:, i] = frames_np[:, i] * self.std[i] + self.mean[i]
-                frames_np = np.clip(frames_np, 0, 1)
-            
-            # Rearrange from [frames, channels, height, width] to [frames, height, width, channels]
-            frames_np = np.transpose(frames_np, (0, 2, 3, 1))
-            
-            # Convert to uint8 (0-255)
-            frames_np = (frames_np * 255).astype(np.uint8)
-        else:
-            frames_np = frames
+        if len(frames) < 2:
+            return np.zeros((0, 2, *self.target_frame_size))
         
-        # Initialize detector
-        scene_changes = []
+        flow_features = []
         
-        # Compute frame differences
-        for i in range(1, len(frames_np)):
-            # Convert to grayscale
-            prev_frame = cv2.cvtColor(frames_np[i-1], cv2.COLOR_RGB2GRAY)
-            curr_frame = cv2.cvtColor(frames_np[i], cv2.COLOR_RGB2GRAY)
-            
-            # Compute absolute difference
-            diff = cv2.absdiff(prev_frame, curr_frame)
-            mean_diff = np.mean(diff)
-            
-            # Check if difference exceeds threshold
-            if mean_diff > threshold:
-                scene_changes.append(i)
+        # Convert frames to grayscale
+        gray_frames = [cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) for frame in frames]
         
-        return scene_changes
+        # Calculate optical flow for each pair of consecutive frames
+        for i in range(len(gray_frames) - 1):
+            flow = cv2.calcOpticalFlowFarneback(
+                gray_frames[i], gray_frames[i + 1],
+                None, 0.5, 3, 15, 3, 5, 1.2, 0
+            )
+            
+            flow_features.append(flow)
+        
+        return np.array(flow_features)
+
+def preprocess_batch(video_paths: List[str], 
+                    processor: Optional[VideoPreprocessor] = None,
+                    extract_audio: bool = True,
+                    detect_faces: bool = True,
+                    segment_video: bool = True,
+                    batch_size: int = 4) -> List[Dict[str, Any]]:
+    """
+    Preprocess a batch of video files.
     
-    def batch_preprocess(self, video_paths: List[str], return_tensor: bool = True) -> Tuple[List[Union[np.ndarray, torch.Tensor]], List[Dict]]:
-        """
-        Preprocess a batch of video files.
+    Args:
+        video_paths: List of paths to video files
+        processor: Optional VideoPreprocessor instance
+        extract_audio: Whether to extract and process audio
+        detect_faces: Whether to detect faces in frames
+        segment_video: Whether to segment videos
+        batch_size: Number of files to process at once
         
-        Args:
-            video_paths (list): List of paths to video files
-            return_tensor (bool): If True, return torch tensor; otherwise NumPy array
-            
-        Returns:
-            list: List of preprocessed videos
-            list: List of meta info dictionaries
-        """
-        preprocessed_videos = []
-        meta_infos = []
+    Returns:
+        List of preprocessing results for each video file
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Preprocessing batch of {len(video_paths)} videos")
+    
+    # Create processor if not provided
+    if processor is None:
+        processor = VideoPreprocessor()
+    
+    results = []
+    
+    # Process in batches
+    for i in range(0, len(video_paths), batch_size):
+        batch = video_paths[i:i+batch_size]
         
-        for video_path in video_paths:
+        for video_path in batch:
             try:
-                processed_video, meta_info = self.preprocess(video_path, return_tensor)
-                preprocessed_videos.append(processed_video)
-                meta_infos.append(meta_info)
+                result = processor.preprocess(
+                    video_path, 
+                    extract_audio=extract_audio,
+                    detect_faces=detect_faces,
+                    segment_video=segment_video
+                )
+                results.append(result)
             except Exception as e:
-                logger.error(f"Error preprocessing video {video_path}: {e}")
-                # Skip failed videos
-                continue
+                logger.error(f"Error preprocessing {video_path}: {str(e)}")
+                # Add empty result with error message
+                results.append({
+                    "error": str(e),
+                    "video_path": video_path
+                })
         
-        return preprocessed_videos, meta_infos
+        logger.debug(f"Processed {min(i+batch_size, len(video_paths))}/{len(video_paths)} videos")
+    
+    return results

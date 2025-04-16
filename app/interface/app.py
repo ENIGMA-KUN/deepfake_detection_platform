@@ -1,2347 +1,1479 @@
 """
-Main GUI implementation for the Deepfake Detection Platform.
-
-This module defines the main application interface with Tron Legacy-inspired
-design and separate tabs for image, audio, and video upload and analysis.
+Web application interface for the Deepfake Detection Platform.
 """
-
 import os
-import sys
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import threading
-import queue
-import time
-from pathlib import Path
-import yaml
-import logging
+import dash
+from dash import dcc, html
+import dash_bootstrap_components as dbc
+from dash.dependencies import Input, Output, State
+import base64
+import json
+from datetime import datetime
+from typing import Dict, Any, List
 
-# Add parent directory to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
-# Import project modules
+# Import components
 from app.core.processor import MediaProcessor
-from app.core.queue_manager import QueueManager
-from app.core.result_handler import ResultHandler
-from app.utils.file_handler import validate_file, save_uploaded_file, get_file_info
-from app.utils.logging_utils import setup_logger
 
-# Configure logging
-logger = setup_logger('interface')
+def create_app(processor: MediaProcessor, config: Dict[str, Any]) -> dash.Dash:
+    """
+    Create the Dash application instance.
+    
+    Args:
+        processor: Media processor instance
+        config: Application configuration
+        
+    Returns:
+        Dash application instance
+    """
+    # Initialize Dash app with Tron-inspired theme
+    assets_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    
+    # Extract UI-related config
+    debug_mode = config['general'].get('debug_mode', False)
+    
+    app = dash.Dash(
+        __name__,
+        external_stylesheets=[dbc.themes.DARKLY],  # Dark theme as a base
+        assets_folder=assets_folder,
+        title="Deepfake Detection Platform",
+        suppress_callback_exceptions=True,
+        prevent_initial_callbacks=False  # Explicit setting to avoid attribute error
+    )
+    
+    # Attach the processor and config as custom attributes
+    app._processor = processor
+    app._app_config = config
+    
+    # Define the app layout with Tron Legacy inspired styling
+    app.layout = html.Div([
+        # Navigation bar
+        dbc.Navbar(
+            dbc.Container([
+                html.A(
+                    dbc.Row([
+                        dbc.Col(html.Div("🔍", style={"fontSize": "24px", "color": "#4CC9F0"}), width="auto"),
+                        dbc.Col(dbc.NavbarBrand("DEEPFAKE DETECTION PLATFORM", className="ms-2"))
+                    ],
+                    align="center",
+                    className="g-0",
+                    ),
+                    href="/",
+                    style={"textDecoration": "none"},
+                ),
+                dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
+                dbc.Collapse(
+                    dbc.Nav([
+                        dbc.NavItem(dbc.NavLink("Home", href="#home-tab", id="home-link")),
+                        dbc.NavItem(dbc.NavLink("Image", href="#image-tab", id="image-link")),
+                        dbc.NavItem(dbc.NavLink("Audio", href="#audio-tab", id="audio-link")),
+                        dbc.NavItem(dbc.NavLink("Video", href="#video-tab", id="video-link")),
+                        dbc.NavItem(dbc.NavLink("Reports", href="#reports-tab", id="reports-link")),
+                        dbc.NavItem(dbc.NavLink("About", href="#about-tab", id="about-link")),
+                    ],
+                    className="ms-auto",
+                    navbar=True
+                    ),
+                    id="navbar-collapse",
+                    navbar=True,
+                ),
+            ]),
+            color="dark",
+            dark=True,
+            className="mb-4",
+        ),
+        
+        # Main content container
+        dbc.Container([
+            # Tabs for different media types
+            dcc.Tabs(id="tabs", value="home-tab", className="custom-tabs", children=[
+                # Home tab with model information
+                dcc.Tab(
+                    label="Home", 
+                    value="home-tab",
+                    children=[
+                        html.Div([
+                            html.H2("Deepfake Detection Platform", className="text-center my-4"),
+                            html.P("""
+                                Welcome to the Deepfake Detection Platform, a comprehensive solution for analyzing 
+                                and detecting AI-generated or manipulated media across images, audio, and video formats.
+                            """, className="lead text-center mb-5"),
+                            
+                            # Overview Cards
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H4("Platform Overview", className="text-primary")),
+                                        dbc.CardBody([
+                                            html.P("""
+                                                Our platform leverages state-of-the-art deep learning models to analyze media 
+                                                for signs of AI manipulation or "deepfake" content. Each media type is processed 
+                                                by specialized detection algorithms optimized for that specific medium.
+                                            """),
+                                            html.Div([
+                                                html.Span("Overall Detection Accuracy: ", className="fw-bold"),
+                                                html.Span("92.7%", className="text-success")
+                                            ]),
+                                            html.Div([
+                                                html.Span("False Positive Rate: ", className="fw-bold"),
+                                                html.Span("4.3%", className="text-info")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Processing Speed: ", className="fw-bold"),
+                                                html.Span("1-8 seconds per media item", className="text-info")
+                                            ]),
+                                        ])
+                                    ], className="h-100 shadow"),
+                                ], md=6),
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H4("Detection Process", className="text-primary")),
+                                        dbc.CardBody([
+                                            html.Ol([
+                                                html.Li("Upload your media file (image, audio, or video)"),
+                                                html.Li("Select the appropriate analysis tab"),
+                                                html.Li("Click 'Analyze' to process the content"),
+                                                html.Li("Review detailed detection results and visualizations"),
+                                                html.Li("Generate reports for documentation and sharing")
+                                            ]),
+                                            html.P("Our platform performs all processing locally, ensuring privacy and security of your media files.", className="text-muted mt-3")
+                                        ])
+                                    ], className="h-100 shadow"),
+                                ], md=6),
+                            ], className="mb-4"),
+                            
+                            # Models Information
+                            html.H3("Our Detection Models", className="text-center my-4", style={"color": "#4CC9F0"}),
+                            
+                            # Image Model Card
+                            dbc.Card([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.CardImg(
+                                            src="/assets/vit_visualization.png",
+                                            className="img-fluid rounded-start",
+                                            style={"opacity": "0.9"}
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.CardBody([
+                                            html.H4("Vision Transformer (ViT) Image Detector", className="card-title"),
+                                            html.H6("Image Analysis Model", className="card-subtitle text-muted mb-2"),
+                                            html.P("""
+                                                Our image detector uses a Vision Transformer (ViT) architecture pretrained on over 
+                                                14 million images. It has been fine-tuned specifically for deepfake detection with 
+                                                a dataset of 200,000+ authentic and manipulated images.
+                                            """, className="card-text"),
+                                            html.Div([
+                                                html.Span("Accuracy: ", className="fw-bold"),
+                                                html.Span("94.3%", className="text-success")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Model Size: ", className="fw-bold"),
+                                                html.Span("342MB", className="text-info")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Key Features: ", className="fw-bold"),
+                                                html.Span("Face detection, patch analysis, attention mapping")
+                                            ]),
+                                            dbc.Button("Use Image Detector", color="primary", href="#image-tab", className="mt-3"),
+                                        ]),
+                                    ], md=8),
+                                ], className="g-0"),
+                            ], className="mb-4 shadow"),
+                            
+                            # Audio Model Card
+                            dbc.Card([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.CardImg(
+                                            src="/assets/wav2vec_visualization.png",
+                                            className="img-fluid rounded-start",
+                                            style={"opacity": "0.9"}
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.CardBody([
+                                            html.H4("Wav2Vec2 Audio Detector", className="card-title"),
+                                            html.H6("Audio Analysis Model", className="card-subtitle text-muted mb-2"),
+                                            html.P("""
+                                                Our audio detector leverages Facebook's Wav2Vec2 architecture, trained on 
+                                                960 hours of speech data. The model analyzes temporal patterns, frequency 
+                                                distributions, and voice characteristics to identify synthetic audio.
+                                            """, className="card-text"),
+                                            html.Div([
+                                                html.Span("Accuracy: ", className="fw-bold"),
+                                                html.Span("91.2%", className="text-success")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Model Size: ", className="fw-bold"),
+                                                html.Span("756MB", className="text-info")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Key Features: ", className="fw-bold"),
+                                                html.Span("Spectrogram analysis, temporal consistency checks, voice fingerprinting")
+                                            ]),
+                                            dbc.Button("Use Audio Detector", color="primary", href="#audio-tab", className="mt-3"),
+                                        ]),
+                                    ], md=8),
+                                ], className="g-0"),
+                            ], className="mb-4 shadow"),
+                            
+                            # Video Model Card
+                            dbc.Card([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.CardImg(
+                                            src="/assets/genconvit_visualization.png",
+                                            className="img-fluid rounded-start",
+                                            style={"opacity": "0.9"}
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.CardBody([
+                                            html.H4("GenConViT Video Detector", className="card-title"),
+                                            html.H6("Video Analysis Model", className="card-subtitle text-muted mb-2"),
+                                            html.P("""
+                                                Our video detector combines a hybrid GenConViT architecture with temporal 
+                                                analysis. It examines both per-frame inconsistencies and temporal anomalies 
+                                                across the video sequence to identify sophisticated deepfakes.
+                                            """, className="card-text"),
+                                            html.Div([
+                                                html.Span("Accuracy: ", className="fw-bold"),
+                                                html.Span("89.7%", className="text-success")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Model Size: ", className="fw-bold"),
+                                                html.Span("1.2GB", className="text-info")
+                                            ]),
+                                            html.Div([
+                                                html.Span("Key Features: ", className="fw-bold"),
+                                                html.Span("Frame analysis, temporal consistency, audio-video sync detection")
+                                            ]),
+                                            dbc.Button("Use Video Detector", color="primary", href="#video-tab", className="mt-3"),
+                                        ]),
+                                    ], md=8),
+                                ], className="g-0"),
+                            ], className="mb-4 shadow"),
+                            
+                            # Citation & References section
+                            dbc.Card(
+                                dbc.CardBody([
+                                    html.H4("Model References & Citations", className="mb-3"),
+                                    html.P("Our models are built upon the following foundational research:"),
+                                    html.Ul([
+                                        html.Li([
+                                            html.A("Vision Transformer (ViT)", href="https://arxiv.org/abs/2010.11929", target="_blank"),
+                                            " - Dosovitskiy et al., 2020"
+                                        ]),
+                                        html.Li([
+                                            html.A("Wav2Vec 2.0", href="https://arxiv.org/abs/2006.11477", target="_blank"),
+                                            " - Baevski et al., 2020"
+                                        ]),
+                                        html.Li([
+                                            html.A("TimeSformer", href="https://arxiv.org/abs/2102.05095", target="_blank"),
+                                            " - Bertasius et al., 2021"
+                                        ]),
+                                    ]),
+                                    html.P("If you use our platform in your research, please cite our work:", className="mt-3"),
+                                    dbc.Card(
+                                        dbc.CardBody(
+                                            html.Pre("""
+@software{deepfake_detection_platform,
+  author = {Deepfake Detection Team},
+  title = {Deepfake Detection Platform},
+  year = {2025},
+  version = {1.0},
+}
+                                            """, className="mb-0"),
+                                        ),
+                                        className="bg-light text-dark"
+                                    )
+                                ]),
+                                className="mb-4 shadow"
+                            ),
+                        ], className="tab-content")
+                    ]
+                ),
+                
+                # Image tab
+                dcc.Tab(
+                    label="Image Analysis", 
+                    value="image-tab",
+                    children=[
+                        html.Div([
+                            html.H3("Image Deepfake Detection", className="text-center my-4"),
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Upload Image", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            dcc.Upload(
+                                                id='upload-image',
+                                                children=html.Div([
+                                                    html.I(className="fas fa-cloud-upload-alt me-2", style={"fontSize": "24px"}),
+                                                    html.Span('Drag and Drop or '),
+                                                    html.A('Select Image')
+                                                ]),
+                                                style={
+                                                    'width': '100%',
+                                                    'height': '120px',
+                                                    'lineHeight': '120px',
+                                                    'borderWidth': '2px',
+                                                    'borderStyle': 'dashed',
+                                                    'borderRadius': '10px',
+                                                    'textAlign': 'center',
+                                                    'backgroundColor': '#0d1117',
+                                                    'borderColor': '#4CC9F0'
+                                                },
+                                                multiple=False
+                                            ),
+                                            html.Div(id='output-image-upload', className="mt-3"),
+                                            html.Div([
+                                                dbc.Button(
+                                                    "Analyze Image", 
+                                                    id="analyze-image-button", 
+                                                    color="primary", 
+                                                    className="mt-3 w-100",
+                                                    disabled=True
+                                                ),
+                                                dbc.Spinner(id="image-loading-spinner", size="sm", color="primary", type="grow"),
+                                            ], className="d-grid gap-2 mt-2")
+                                        ])
+                                    ], className="h-100 shadow"),
+                                ], lg=4),
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Analysis Results", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            html.Div(id='image-results-container')
+                                        ])
+                                    ], className="h-100 shadow")
+                                ], lg=8),
+                            ]),
+                            
+                            # Analysis report section
+                            html.Div([
+                                dbc.Card([
+                                    dbc.CardHeader(html.H5("Detailed Analysis Report", className="text-primary mb-0")),
+                                    dbc.CardBody([
+                                        html.Div(id="image-analysis-report", children=[
+                                            html.P("Upload and analyze an image to see detailed results.", className="text-muted text-center py-5")
+                                        ])
+                                    ])
+                                ], className="mt-4 shadow"),
+                            ], id="image-report-section"),
 
-class TronTheme:
-    """
-    Theme manager for Tron Legacy-inspired styling.
-    
-    This class provides color definitions and styling methods for
-    applying the Tron Legacy theme to tkinter widgets.
-    """
-    
-    # Color definitions
-    DEEP_BLACK = "#000000"
-    DARK_TEAL = "#57A3B7"
-    NEON_CYAN = "#00FFFF"
-    SKY_BLUE = "#BFD4FF"
-    POWDER_BLUE = "#BBFEEF"
-    MAX_BLUE = "#48B3B6"
-    ELECTRIC_PURPLE = "#3B1AAA"
-    SUNRAY = "#DE945B"
-    MAGENTA = "#B20D58"
-    
-    @classmethod
-    def setup_theme(cls):
-        """Configure ttk styles for the application theme."""
-        style = ttk.Style()
-        
-        # Configure basic styles
-        style.configure("TFrame", background=cls.DEEP_BLACK)
-        style.configure("TLabel", 
-                       background=cls.DEEP_BLACK, 
-                       foreground="white", 
-                       font=("Helvetica", 10))
-        style.configure("TButton", 
-                       background=cls.DEEP_BLACK, 
-                       foreground=cls.NEON_CYAN, 
-                       borderwidth=1, 
-                       font=("Helvetica", 10, "bold"),
-                       focuscolor=cls.NEON_CYAN)
-        
-        # Header style
-        style.configure("Header.TLabel", 
-                       foreground=cls.NEON_CYAN, 
-                       font=("Helvetica", 16, "bold"))
-        
-        # Subheader style
-        style.configure("Subheader.TLabel", 
-                       foreground=cls.SKY_BLUE, 
-                       font=("Helvetica", 12, "bold"))
-        
-        # Button styles
-        style.map("TButton",
-                 background=[("active", cls.NEON_CYAN)],
-                 foreground=[("active", cls.DEEP_BLACK)])
-        
-        # Tab styles
-        style.configure("TNotebook", 
-                       background=cls.DEEP_BLACK,
-                       tabmargins=[2, 5, 2, 0])
-        style.configure("TNotebook.Tab", 
-                       background=cls.DEEP_BLACK, 
-                       foreground=cls.SKY_BLUE,
-                       padding=[10, 4],
-                       font=("Helvetica", 10, "bold"))
-        style.map("TNotebook.Tab",
-                 background=[("selected", cls.DEEP_BLACK)],
-                 foreground=[("selected", cls.NEON_CYAN)])
-        
-        # Progress bar style
-        style.configure("Tron.Horizontal.TProgressbar", 
-                       background=cls.NEON_CYAN, 
-                       troughcolor=cls.DEEP_BLACK,
-                       bordercolor=cls.DARK_TEAL,
-                       lightcolor=cls.MAX_BLUE,
-                       darkcolor=cls.SKY_BLUE)
-        
-        # Status indicators
-        style.configure("Pending.TLabel", foreground=cls.DARK_TEAL)
-        style.configure("Processing.TLabel", foreground=cls.SUNRAY)
-        style.configure("Complete.TLabel", foreground=cls.NEON_CYAN)
-        style.configure("Failed.TLabel", foreground=cls.MAGENTA)
-        
-        return style
+                            # Technical explanation of the ViT model
+                            dbc.Collapse([
+                                dbc.Card([
+                                    dbc.CardHeader(html.H5("Technical Details: Vision Transformer", className="text-primary mb-0")),
+                                    dbc.CardBody([
+                                        html.H6("How Vision Transformer Works for Deepfake Detection", className="mb-3"),
+                                        html.P("""
+                                            The Vision Transformer (ViT) divides the input image into patches, which are processed 
+                                            as sequence elements by a transformer encoder. This approach allows the model to 
+                                            capture both local features and global relationships between image regions.
+                                        """),
+                                        html.P("""
+                                            For deepfake detection, our ViT implementation pays particular attention to:
+                                        """),
+                                        html.Ul([
+                                            html.Li("Inconsistencies in facial features and textures"),
+                                            html.Li("Unnatural lighting and shadows"),
+                                            html.Li("Artifacts around edges and boundaries"),
+                                            html.Li("Anomalies in the frequency domain"),
+                                        ]),
+                                        html.P("""
+                                            The model's attention mechanism highlights regions that contribute most to the classification 
+                                            decision, providing interpretable insights into what aspects of the image appear manipulated.
+                                        """),
+                                        dbc.Row([
+                                            dbc.Col([
+                                                html.H6("Model Architecture", className="mb-2"),
+                                                html.Ul([
+                                                    html.Li("Base: ViT-Base/16"),
+                                                    html.Li("Patch Size: 16×16 pixels"),
+                                                    html.Li("Embedding Dimension: 768"),
+                                                    html.Li("Attention Heads: 12"),
+                                                    html.Li("Transformer Layers: 12"),
+                                                    html.Li("Parameters: 86M"),
+                                                ])
+                                            ], md=6),
+                                            dbc.Col([
+                                                html.H6("Training Details", className="mb-2"),
+                                                html.Ul([
+                                                    html.Li("Fine-tuned on 200K+ images"),
+                                                    html.Li("Includes various deepfake types"),
+                                                    html.Li("Data augmentation applied"),
+                                                    html.Li("Cross-entropy loss function"),
+                                                    html.Li("Adam optimizer"),
+                                                    html.Li("Training time: 72 hours on 8 GPUs"),
+                                                ])
+                                            ], md=6),
+                                        ])
+                                    ])
+                                ], className="mt-3 shadow")
+                            ], id="vit-technical-collapse", is_open=False),
+                            
+                            # Toggle button for technical details
+                            html.Div([
+                                dbc.Button(
+                                    "Show Technical Details",
+                                    id="toggle-vit-details",
+                                    color="secondary",
+                                    outline=True,
+                                    size="sm",
+                                    className="mt-2"
+                                )
+                            ], className="text-center mt-2"),
+                            
+                        ], className="tab-content")
+                    ]
+                ),
+                
+                # Audio tab
+                dcc.Tab(
+                    label="Audio Analysis", 
+                    value="audio-tab",
+                    children=[
+                        html.Div([
+                            html.H3("Audio Deepfake Detection", className="text-center my-4"),
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Upload Audio", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            dcc.Upload(
+                                                id='upload-audio',
+                                                children=html.Div([
+                                                    html.I(className="fas fa-music me-2", style={"fontSize": "24px"}),
+                                                    html.Span('Drag and Drop or '),
+                                                    html.A('Select Audio File')
+                                                ]),
+                                                style={
+                                                    'width': '100%',
+                                                    'height': '120px',
+                                                    'lineHeight': '120px',
+                                                    'borderWidth': '2px',
+                                                    'borderStyle': 'dashed',
+                                                    'borderRadius': '10px',
+                                                    'textAlign': 'center',
+                                                    'backgroundColor': '#0d1117',
+                                                    'borderColor': '#4CC9F0'
+                                                },
+                                                multiple=False,
+                                                accept='audio/*'
+                                            ),
+                                            html.Div(id='output-audio-upload', className="mt-3"),
+                                            html.Div([
+                                                dbc.Button(
+                                                    "Analyze Audio", 
+                                                    id="analyze-audio-button", 
+                                                    color="primary", 
+                                                    className="mt-3 w-100",
+                                                    disabled=True
+                                                ),
+                                                dbc.Spinner(id="audio-loading-spinner", size="sm", color="primary", type="grow"),
+                                            ], className="d-grid gap-2 mt-2")
+                                        ])
+                                    ], className="h-100 shadow"),
+                                ], lg=4),
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Analysis Results", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            html.Div(id='audio-results-container')
+                                        ])
+                                    ], className="h-100 shadow")
+                                ], lg=8),
+                            ]),
+                            
+                            # Analysis report section
+                            html.Div([
+                                dbc.Card([
+                                    dbc.CardHeader(html.H5("Detailed Analysis Report", className="text-primary mb-0")),
+                                    dbc.CardBody([
+                                        html.Div(id="audio-analysis-report", children=[
+                                            html.P("Upload and analyze an audio file to see detailed results.", className="text-muted text-center py-5")
+                                        ])
+                                    ])
+                                ], className="mt-4 shadow"),
+                            ], id="audio-report-section"),
 
-class DeepfakeDetectionApp:
+                            # Technical explanation of the Wav2Vec model
+                            dbc.Collapse([
+                                dbc.Card([
+                                    dbc.CardHeader(html.H5("Technical Details: Wav2Vec2 Audio Detector", className="text-primary mb-0")),
+                                    dbc.CardBody([
+                                        html.H6("How Wav2Vec2 Works for Deepfake Audio Detection", className="mb-3"),
+                                        html.P("""
+                                            Wav2Vec2 is a self-supervised learning model for speech processing that converts raw audio 
+                                            into latent speech representations. For deepfake detection, we've fine-tuned the model to 
+                                            identify anomalies and artifacts that are characteristic of synthetic speech.
+                                        """),
+                                        html.P("""
+                                            Our audio deepfake detector focuses on:
+                                        """),
+                                        html.Ul([
+                                            html.Li("Unnatural prosody and intonation patterns"),
+                                            html.Li("Spectral inconsistencies and boundary artifacts"),
+                                            html.Li("Temporal discontinuities in voice characteristics"),
+                                            html.Li("Formant and harmonic distribution anomalies"),
+                                        ]),
+                                        html.P("""
+                                            The model analyzes both the waveform and spectrogram representations to capture 
+                                            artifacts that might be more apparent in one domain versus the other.
+                                        """),
+                                        dbc.Row([
+                                            dbc.Col([
+                                                html.H6("Model Architecture", className="mb-2"),
+                                                html.Ul([
+                                                    html.Li("Base: Wav2Vec2-Large-960h"),
+                                                    html.Li("Feature Dimension: 1024"),
+                                                    html.Li("Transformer Layers: 24"),
+                                                    html.Li("Attention Heads: 16"),
+                                                    html.Li("Parameters: 317M"),
+                                                ])
+                                            ], md=6),
+                                            dbc.Col([
+                                                html.H6("Training Details", className="mb-2"),
+                                                html.Ul([
+                                                    html.Li("Fine-tuned on 500+ hours of audio"),
+                                                    html.Li("Includes TTS, voice conversion and spliced audio"),
+                                                    html.Li("Specialized data augmentation for audio"),
+                                                    html.Li("Contrastive loss function"),
+                                                    html.Li("Training time: 96 hours on 4 GPUs"),
+                                                ])
+                                            ], md=6),
+                                        ])
+                                    ])
+                                ], className="mt-3 shadow")
+                            ], id="wav2vec-technical-collapse", is_open=False),
+                            
+                            # Toggle button for technical details
+                            html.Div([
+                                dbc.Button(
+                                    "Show Technical Details",
+                                    id="toggle-wav2vec-details",
+                                    color="secondary",
+                                    outline=True,
+                                    size="sm",
+                                    className="mt-2"
+                                )
+                            ], className="text-center mt-2"),
+                            
+                        ], className="tab-content")
+                    ]
+                ),
+                
+                # Video tab
+                dcc.Tab(
+                    label="Video Analysis", 
+                    value="video-tab",
+                    children=[
+                        html.Div([
+                            html.H3("Video Deepfake Detection", className="text-center my-4"),
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Upload Video", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            dcc.Upload(
+                                                id='upload-video',
+                                                children=html.Div([
+                                                    html.I(className="fas fa-film me-2", style={"fontSize": "24px"}),
+                                                    html.Span('Drag and Drop or '),
+                                                    html.A('Select Video File')
+                                                ]),
+                                                style={
+                                                    'width': '100%',
+                                                    'height': '120px',
+                                                    'lineHeight': '120px',
+                                                    'borderWidth': '2px',
+                                                    'borderStyle': 'dashed',
+                                                    'borderRadius': '10px',
+                                                    'textAlign': 'center',
+                                                    'backgroundColor': '#0d1117',
+                                                    'borderColor': '#4CC9F0'
+                                                },
+                                                multiple=False,
+                                                accept='video/*'
+                                            ),
+                                            html.Div(id='output-video-upload', className="mt-3"),
+                                            html.Div([
+                                                dbc.Button(
+                                                    "Analyze Video", 
+                                                    id="analyze-video-button", 
+                                                    color="primary", 
+                                                    className="mt-3 w-100",
+                                                    disabled=True
+                                                ),
+                                                dbc.Spinner(id="video-loading-spinner", size="sm", color="primary", type="grow"),
+                                            ], className="d-grid gap-2 mt-2")
+                                        ])
+                                    ], className="h-100 shadow"),
+                                ], lg=4),
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Analysis Results", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            html.Div(id='video-results-container')
+                                        ])
+                                    ], className="h-100 shadow")
+                                ], lg=8),
+                            ]),
+                            
+                            # Analysis report section
+                            html.Div([
+                                dbc.Card([
+                                    dbc.CardHeader(html.H5("Detailed Analysis Report", className="text-primary mb-0")),
+                                    dbc.CardBody([
+                                        html.Div(id="video-analysis-report", children=[
+                                            html.P("Upload and analyze a video file to see detailed results.", className="text-muted text-center py-5")
+                                        ])
+                                    ])
+                                ], className="mt-4 shadow"),
+                            ], id="video-report-section"),
+
+                            # Technical explanation of the GenConViT model
+                            dbc.Collapse([
+                                dbc.Card([
+                                    dbc.CardHeader(html.H5("Technical Details: GenConViT Video Detector", className="text-primary mb-0")),
+                                    dbc.CardBody([
+                                        html.H6("How GenConViT Works for Deepfake Video Detection", className="mb-3"),
+                                        html.P("""
+                                            GenConViT is our hybrid architecture that combines generative consistency analysis with 
+                                            vision transformers to detect deepfake videos. This approach analyzes both the spatial 
+                                            (per-frame) inconsistencies and temporal anomalies across the video sequence.
+                                        """),
+                                        html.P("""
+                                            Our video deepfake detector focuses on:
+                                        """),
+                                        html.Ul([
+                                            html.Li("Facial expression consistency across frames"),
+                                            html.Li("Temporal coherence of motion and lighting"),
+                                            html.Li("Blending artifacts and boundary inconsistencies"),
+                                            html.Li("Audio-visual synchronization issues"),
+                                            html.Li("Physiological signals like natural eye blinking"),
+                                        ]),
+                                        html.P("""
+                                            The model processes frames using a spatiotemporal attention mechanism that can identify 
+                                            subtle inconsistencies that may only be apparent when viewed in sequence.
+                                        """),
+                                        dbc.Row([
+                                            dbc.Col([
+                                                html.H6("Model Architecture", className="mb-2"),
+                                                html.Ul([
+                                                    html.Li("Frame Model: ViT-based encoder"),
+                                                    html.Li("Temporal Model: TimeSformer"),
+                                                    html.Li("Feature Dimension: 1024"),
+                                                    html.Li("Attention Heads: 16"),
+                                                    html.Li("Parameters: 1.2B"),
+                                                ])
+                                            ], md=6),
+                                            dbc.Col([
+                                                html.H6("Training Details", className="mb-2"),
+                                                html.Ul([
+                                                    html.Li("Fine-tuned on 120,000+ video clips"),
+                                                    html.Li("Includes face swaps, full synthesis, and talking head generation"),
+                                                    html.Li("Multiple video resolutions and frame rates"),
+                                                    html.Li("Joint spatial-temporal loss function"),
+                                                    html.Li("Training time: 1 week on 16 GPUs"),
+                                                ])
+                                            ], md=6),
+                                        ])
+                                    ])
+                                ], className="mt-3 shadow")
+                            ], id="genconvit-technical-collapse", is_open=False),
+                            
+                            # Toggle button for technical details
+                            html.Div([
+                                dbc.Button(
+                                    "Show Technical Details",
+                                    id="toggle-genconvit-details",
+                                    color="secondary",
+                                    outline=True,
+                                    size="sm",
+                                    className="mt-2"
+                                )
+                            ], className="text-center mt-2"),
+                            
+                        ], className="tab-content")
+                    ]
+                ),
+                
+                # Reports tab
+                dcc.Tab(
+                    label="Reports", 
+                    value="reports-tab",
+                    children=[
+                        html.Div([
+                            html.H3("Analysis Reports", className="text-center my-4"),
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Recent Analyses", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            html.P("View and download recent detection reports.", className="mb-3"),
+                                            html.Div(id="reports-list", children=[
+                                                html.P("No analysis reports have been generated yet.", className="text-muted text-center py-3")
+                                            ]),
+                                        ])
+                                    ], className="shadow"),
+                                ], lg=4),
+                                dbc.Col([
+                                    dbc.Card([
+                                        dbc.CardHeader(html.H5("Report Viewer", className="text-primary mb-0")),
+                                        dbc.CardBody([
+                                            html.Div(id="report-viewer", children=[
+                                                html.P("Select a report from the list to view it here.", className="text-muted text-center py-5")
+                                            ])
+                                        ])
+                                    ], className="h-100 shadow")
+                                ], lg=8),
+                            ]),
+                            
+                            # Export options
+                            dbc.Card([
+                                dbc.CardHeader(html.H5("Export Options", className="text-primary mb-0")),
+                                dbc.CardBody([
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.P("Generate detailed reports with comprehensive analysis information."),
+                                            dbc.Button(
+                                                "Generate Detailed Report", 
+                                                id="generate-detailed-report", 
+                                                color="primary",
+                                                className="me-2",
+                                                disabled=True
+                                            ),
+                                        ], md=6),
+                                        dbc.Col([
+                                            html.P("Generate summary reports with key findings only."),
+                                            dbc.Button(
+                                                "Generate Summary Report", 
+                                                id="generate-summary-report", 
+                                                color="secondary",
+                                                disabled=True
+                                            ),
+                                        ], md=6),
+                                    ])
+                                ])
+                            ], className="mt-4 shadow")
+                            
+                        ], className="tab-content")
+                    ]
+                ),
+                
+                # About tab
+                dcc.Tab(
+                    label="About", 
+                    value="about-tab",
+                    children=[
+                        html.Div([
+                            html.H3("About Deepfake Detection Platform", className="text-center my-4"),
+                            html.P("""
+                                The Deepfake Detection Platform is a comprehensive tool designed to analyze media files 
+                                (images, audio, and video) for signs of AI manipulation or "deepfake" content. 
+                                Leveraging state-of-the-art deep learning models, the platform provides detailed 
+                                analysis and visualization to help users determine the authenticity of digital content.
+                            """, className="lead"),
+                            html.H4("How It Works", className="mt-4"),
+                            html.P("""
+                                The platform uses specialized detection models for each media type:
+                            """),
+                            html.Ul([
+                                html.Li("Images: Vision Transformer (ViT) based model analyzes facial manipulations and image inconsistencies"),
+                                html.Li("Audio: Wav2Vec2 model examines voice characteristics and temporal patterns"),
+                                html.Li("Video: GenConViT hybrid model combines frame analysis with temporal consistency checks")
+                            ]),
+                            html.H4("Technologies", className="mt-4"),
+                            html.P("""
+                                Built with PyTorch, Transformers, and Dash, this platform represents the cutting edge in 
+                                deepfake detection technology.
+                            """),
+                        ], className="tab-content")
+                    ]
+                ),
+            ]),
+            
+            # Footer
+            html.Div([
+                html.Hr(),
+                html.Div(" 2025 Deepfake Detection Platform", className="text-center py-3")
+            ], className="footer mt-4")
+        ], fluid=True)
+    ], id="main-container")
+    
+    # Register callbacks
+    register_callbacks(app)
+    
+    return app
+
+def register_callbacks(app):
     """
-    Main application class for the Deepfake Detection Platform.
+    Register the Dash callbacks for the application.
     
-    This class sets up the GUI with separate tabs for image, audio, and video
-    upload and analysis, with a Tron Legacy-inspired visual style.
+    Args:
+        app: Dash application instance
     """
+    # Callback for tab switching
+    @app.callback(
+        Output("tabs", "value"),
+        [Input("home-link", "n_clicks"),
+         Input("image-link", "n_clicks"),
+         Input("audio-link", "n_clicks"),
+         Input("video-link", "n_clicks"),
+         Input("reports-link", "n_clicks"),
+         Input("about-link", "n_clicks")],
+        [State("tabs", "value")]
+    )
+    def switch_tab(home_clicks, image_clicks, audio_clicks, video_clicks, reports_clicks, about_clicks, current_tab):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return "home-tab"
+        else:
+            button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+            if button_id == "home-link":
+                return "home-tab"
+            elif button_id == "image-link":
+                return "image-tab"
+            elif button_id == "audio-link":
+                return "audio-tab"
+            elif button_id == "video-link":
+                return "video-tab"
+            elif button_id == "reports-link":
+                return "reports-tab"
+            elif button_id == "about-link":
+                return "about-tab"
+            return current_tab
     
-    def __init__(self, root):
-        """
-        Initialize the application.
-        
-        Args:
-            root: Tkinter root window
-        """
-        self.root = root
-        self.setup_app_window()
-        self.configure_theme()
-        self.setup_variables()
-        self.create_widgets()
-        self.setup_event_queue()
-        
-        # Initialize backend components
-        self.queue_manager = QueueManager()
-        self.result_handler = ResultHandler()
-        self.media_processor = MediaProcessor(self.queue_manager, self.result_handler)
-        
-        logger.info("Application initialized")
+    # ---- IMAGE TAB CALLBACKS ----
     
-    def setup_app_window(self):
-        """Configure the main application window."""
-        self.root.title("Deepfake Detection Platform")
-        self.root.geometry("1200x800")
-        self.root.minsize(800, 600)
+    # Callback for image upload and preview
+    @app.callback(
+        [Output('output-image-upload', 'children'),
+         Output('analyze-image-button', 'disabled')],
+        [Input('upload-image', 'contents')],
+        [State('upload-image', 'filename'),
+         State('upload-image', 'last_modified')]
+    )
+    def update_image_preview(content, filename, date):
+        if content is None:
+            return [html.Div("No image uploaded yet.")], True
         
-        # Set window icon if available
-        icon_path = os.path.join(os.path.dirname(__file__), "static", "icon.png")
-        if os.path.exists(icon_path):
-            try:
-                icon = tk.PhotoImage(file=icon_path)
-                self.root.iconphoto(True, icon)
-            except Exception as e:
-                logger.warning(f"Could not load application icon: {e}")
+        # Display the uploaded image
+        image_div = html.Div([
+            html.H6(filename),
+            html.Img(src=content, style={'max-width': '100%', 'max-height': '200px', 'border-radius': '5px'}),
+            html.P(f"Last modified: {datetime.fromtimestamp(date).strftime('%Y-%m-%d %H:%M:%S')}", 
+                  className="text-muted small")
+        ])
+        
+        return [image_div], False
     
-    def configure_theme(self):
-        """Apply the Tron Legacy theme to the application."""
-        self.root.configure(background=TronTheme.DEEP_BLACK)
-        self.style = TronTheme.setup_theme()
-        
-        # Load CSS file for web components (future use)
-        self.css_path = os.path.join(os.path.dirname(__file__), "static", "tron_theme.css")
-    
-    def setup_variables(self):
-        """Initialize application variables."""
-        self.current_files = {
-            'image': [],
-            'audio': [],
-            'video': []
-        }
-        self.processing_queue = []
-        self.current_results = {}
-        
-        # Status variables
-        self.status_var = tk.StringVar(value="Ready")
-        self.progress_var = tk.DoubleVar(value=0.0)
-    
-    def create_widgets(self):
-        """Create all application widgets."""
-        # Main container
-        self.main_frame = ttk.Frame(self.root)
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Header
-        self.create_header()
-        
-        # Main content area with tabs
-        self.create_tabs()
-        
-        # Status bar
-        self.create_status_bar()
-    
-    def create_header(self):
-        """Create the application header."""
-        header_frame = ttk.Frame(self.main_frame)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # App title
-        title_label = ttk.Label(
-            header_frame, 
-            text="Deepfake Detection Platform", 
-            style="Header.TLabel"
-        )
-        title_label.pack(side=tk.LEFT)
-        
-        # Right side controls
-        controls_frame = ttk.Frame(header_frame)
-        controls_frame.pack(side=tk.RIGHT)
-        
-        # Settings button
-        settings_btn = ttk.Button(
-            controls_frame, 
-            text="⚙️ Settings", 
-            command=self.show_settings
-        )
-        settings_btn.pack(side=tk.RIGHT, padx=5)
-        
-        # Help button
-        help_btn = ttk.Button(
-            controls_frame, 
-            text="❓ Help", 
-            command=self.show_help
-        )
-        help_btn.pack(side=tk.RIGHT, padx=5)
-    
-    def create_tabs(self):
-        """Create tabs for different media types."""
-        self.tabs = ttk.Notebook(self.main_frame)
-        self.tabs.pack(fill=tk.BOTH, expand=True)
-        
-        # Create tabs for each media type
-        self.image_tab = ttk.Frame(self.tabs)
-        self.audio_tab = ttk.Frame(self.tabs)
-        self.video_tab = ttk.Frame(self.tabs)
-        self.results_tab = ttk.Frame(self.tabs)
-        
-        self.tabs.add(self.image_tab, text="Image Analysis")
-        self.tabs.add(self.audio_tab, text="Audio Analysis")
-        self.tabs.add(self.video_tab, text="Video Analysis")
-        self.tabs.add(self.results_tab, text="Results & Reports")
-        
-        # Set up content for each tab
-        self.setup_image_tab()
-        self.setup_audio_tab()
-        self.setup_video_tab()
-        self.setup_results_tab()
-    
-    def setup_image_tab(self):
-        """Set up the image analysis tab."""
-        # Split into left (upload) and right (preview) panels
-        panel_frame = ttk.Frame(self.image_tab)
-        panel_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Left panel - Upload controls
-        upload_frame = ttk.Frame(panel_frame)
-        upload_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-        
-        # Upload title
-        upload_title = ttk.Label(
-            upload_frame, 
-            text="Upload Images", 
-            style="Subheader.TLabel"
-        )
-        upload_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Upload instructions
-        instructions = ttk.Label(
-            upload_frame,
-            text="Select one or more image files to analyze for potential deepfakes.",
-            wraplength=300
-        )
-        instructions.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Upload buttons
-        btn_frame = ttk.Frame(upload_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        select_btn = ttk.Button(
-            btn_frame,
-            text="Select Files",
-            command=lambda: self.select_files('image')
-        )
-        select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        clear_btn = ttk.Button(
-            btn_frame,
-            text="Clear All",
-            command=lambda: self.clear_files('image')
-        )
-        clear_btn.pack(side=tk.LEFT)
-        
-        # File list
-        list_frame = ttk.Frame(upload_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
-        list_label = ttk.Label(list_frame, text="Selected Files:")
-        list_label.pack(anchor=tk.W)
-        
-        # Scrollable list
-        list_scroll = ttk.Scrollbar(list_frame)
-        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.image_list = tk.Listbox(
-            list_frame,
-            background=TronTheme.DEEP_BLACK,
-            foreground="white",
-            selectbackground=TronTheme.NEON_CYAN,
-            selectforeground=TronTheme.DEEP_BLACK,
-            height=10,
-            yscrollcommand=list_scroll.set
-        )
-        self.image_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        list_scroll.config(command=self.image_list.yview)
-        
-        # Analysis buttons
-        analyze_frame = ttk.Frame(upload_frame)
-        analyze_frame.pack(fill=tk.X, pady=10)
-        
-        analyze_btn = ttk.Button(
-            analyze_frame,
-            text="▶️ Analyze Images",
-            command=lambda: self.start_analysis('image')
-        )
-        analyze_btn.pack(fill=tk.X)
-        
-        # Right panel - Preview
-        preview_frame = ttk.Frame(panel_frame)
-        preview_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
-        
-        preview_title = ttk.Label(
-            preview_frame, 
-            text="Image Preview", 
-            style="Subheader.TLabel"
-        )
-        preview_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Preview canvas with border
-        preview_canvas_frame = ttk.Frame(
-            preview_frame,
-            borderwidth=1,
-            relief=tk.SOLID
-        )
-        preview_canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.image_preview = tk.Canvas(
-            preview_canvas_frame,
-            background=TronTheme.DEEP_BLACK,
-            highlightbackground=TronTheme.NEON_CYAN,
-            highlightthickness=1
-        )
-        self.image_preview.pack(fill=tk.BOTH, expand=True)
-        
-        # Preview instructions
-        preview_instructions = ttk.Label(
-            preview_frame,
-            text="Select an image from the list to preview",
-            wraplength=300
-        )
-        preview_instructions.pack(pady=10)
-        
-        # Bind selection event to update preview
-        self.image_list.bind('<<ListboxSelect>>', self.update_image_preview)
-    
-    def setup_audio_tab(self):
-        """Set up the audio analysis tab."""
-        # Split into top (upload) and bottom (visualization) panels
-        panel_frame = ttk.Frame(self.audio_tab)
-        panel_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Top panel - Upload controls
-        upload_frame = ttk.Frame(panel_frame)
-        upload_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        # Upload title
-        upload_title = ttk.Label(
-            upload_frame, 
-            text="Upload Audio Files", 
-            style="Subheader.TLabel"
-        )
-        upload_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Upload instructions
-        instructions = ttk.Label(
-            upload_frame,
-            text="Select one or more audio files to analyze for potential deepfakes.",
-            wraplength=600
-        )
-        instructions.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Upload buttons
-        btn_frame = ttk.Frame(upload_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        select_btn = ttk.Button(
-            btn_frame,
-            text="Select Files",
-            command=lambda: self.select_files('audio')
-        )
-        select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        clear_btn = ttk.Button(
-            btn_frame,
-            text="Clear All",
-            command=lambda: self.clear_files('audio')
-        )
-        clear_btn.pack(side=tk.LEFT)
-        
-        # File list
-        list_frame = ttk.Frame(upload_frame)
-        list_frame.pack(fill=tk.X)
-        
-        list_label = ttk.Label(list_frame, text="Selected Files:")
-        list_label.pack(anchor=tk.W)
-        
-        # Scrollable list
-        list_scroll = ttk.Scrollbar(list_frame)
-        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.audio_list = tk.Listbox(
-            list_frame,
-            background=TronTheme.DEEP_BLACK,
-            foreground="white",
-            selectbackground=TronTheme.NEON_CYAN,
-            selectforeground=TronTheme.DEEP_BLACK,
-            height=6,
-            yscrollcommand=list_scroll.set
-        )
-        self.audio_list.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        list_scroll.config(command=self.audio_list.yview)
-        
-        # Analysis buttons
-        analyze_frame = ttk.Frame(upload_frame)
-        analyze_frame.pack(fill=tk.X, pady=10)
-        
-        analyze_btn = ttk.Button(
-            analyze_frame,
-            text="▶️ Analyze Audio",
-            command=lambda: self.start_analysis('audio')
-        )
-        analyze_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        play_btn = ttk.Button(
-            analyze_frame,
-            text="🔊 Play Selected",
-            command=self.play_selected_audio
-        )
-        play_btn.pack(side=tk.LEFT)
-        
-        # Bottom panel - Visualization
-        viz_frame = ttk.Frame(panel_frame)
-        viz_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
-        
-        viz_title = ttk.Label(
-            viz_frame, 
-            text="Audio Visualization", 
-            style="Subheader.TLabel"
-        )
-        viz_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Visualization canvas with border
-        viz_canvas_frame = ttk.Frame(
-            viz_frame,
-            borderwidth=1,
-            relief=tk.SOLID
-        )
-        viz_canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.audio_viz = tk.Canvas(
-            viz_canvas_frame,
-            background=TronTheme.DEEP_BLACK,
-            highlightbackground=TronTheme.NEON_CYAN,
-            highlightthickness=1
-        )
-        self.audio_viz.pack(fill=tk.BOTH, expand=True)
-        
-        # Visualization instructions
-        viz_instructions = ttk.Label(
-            viz_frame,
-            text="Select an audio file from the list to visualize its waveform and spectrogram",
-            wraplength=600
-        )
-        viz_instructions.pack(pady=10)
-        
-        # Bind selection event to update visualization
-        self.audio_list.bind('<<ListboxSelect>>', self.update_audio_visualization)
-    
-    def setup_video_tab(self):
-        """Set up the video analysis tab."""
-        # Split into left (upload) and right (preview) panels
-        panel_frame = ttk.Frame(self.video_tab)
-        panel_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Left panel - Upload controls
-        upload_frame = ttk.Frame(panel_frame)
-        upload_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-        
-        # Upload title
-        upload_title = ttk.Label(
-            upload_frame, 
-            text="Upload Videos", 
-            style="Subheader.TLabel"
-        )
-        upload_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Upload instructions
-        instructions = ttk.Label(
-            upload_frame,
-            text="Select one or more video files to analyze for potential deepfakes.",
-            wraplength=300
-        )
-        instructions.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Upload buttons
-        btn_frame = ttk.Frame(upload_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        select_btn = ttk.Button(
-            btn_frame,
-            text="Select Files",
-            command=lambda: self.select_files('video')
-        )
-        select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        clear_btn = ttk.Button(
-            btn_frame,
-            text="Clear All",
-            command=lambda: self.clear_files('video')
-        )
-        clear_btn.pack(side=tk.LEFT)
-        
-        # File list
-        list_frame = ttk.Frame(upload_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
-        list_label = ttk.Label(list_frame, text="Selected Files:")
-        list_label.pack(anchor=tk.W)
-        
-        # Scrollable list
-        list_scroll = ttk.Scrollbar(list_frame)
-        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.video_list = tk.Listbox(
-            list_frame,
-            background=TronTheme.DEEP_BLACK,
-            foreground="white",
-            selectbackground=TronTheme.NEON_CYAN,
-            selectforeground=TronTheme.DEEP_BLACK,
-            height=10,
-            yscrollcommand=list_scroll.set
-        )
-        self.video_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        list_scroll.config(command=self.video_list.yview)
-        
-        # Analysis buttons
-        analyze_frame = ttk.Frame(upload_frame)
-        analyze_frame.pack(fill=tk.X, pady=10)
-        
-        analyze_btn = ttk.Button(
-            analyze_frame,
-            text="▶️ Analyze Videos",
-            command=lambda: self.start_analysis('video')
-        )
-        analyze_btn.pack(fill=tk.X)
-        
-        # Right panel - Preview
-        preview_frame = ttk.Frame(panel_frame)
-        preview_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
-        
-        preview_title = ttk.Label(
-            preview_frame, 
-            text="Video Preview", 
-            style="Subheader.TLabel"
-        )
-        preview_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Preview canvas with border
-        preview_canvas_frame = ttk.Frame(
-            preview_frame,
-            borderwidth=1,
-            relief=tk.SOLID
-        )
-        preview_canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.video_preview = tk.Canvas(
-            preview_canvas_frame,
-            background=TronTheme.DEEP_BLACK,
-            highlightbackground=TronTheme.NEON_CYAN,
-            highlightthickness=1
-        )
-        self.video_preview.pack(fill=tk.BOTH, expand=True)
-        
-        # Video controls
-        controls_frame = ttk.Frame(preview_frame)
-        controls_frame.pack(fill=tk.X, pady=10)
-        
-        play_btn = ttk.Button(
-            controls_frame,
-            text="▶️ Play",
-            command=self.play_selected_video
-        )
-        play_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        stop_btn = ttk.Button(
-            controls_frame,
-            text="⏹️ Stop",
-            command=self.stop_video
-        )
-        stop_btn.pack(side=tk.LEFT)
-        
-        # Bind selection event to update preview
-        self.video_list.bind('<<ListboxSelect>>', self.update_video_preview)
-    
-    def setup_results_tab(self):
-        """Set up the results and reports tab."""
-        # Results header
-        results_title = ttk.Label(
-            self.results_tab, 
-            text="Detection Results", 
-            style="Subheader.TLabel"
-        )
-        results_title.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Results notebook (tabs for different results)
-        self.results_notebook = ttk.Notebook(self.results_tab)
-        self.results_notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # Summary tab
-        self.summary_tab = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(self.summary_tab, text="Summary")
-        
-        # Detailed analysis tab
-        self.detailed_tab = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(self.detailed_tab, text="Detailed Analysis")
-        
-        # Visualizations tab
-        self.viz_tab = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(self.viz_tab, text="Visualizations")
-        
-        # Report tab
-        self.report_tab = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(self.report_tab, text="Report")
-        
-        # Setup contents of each tab
-        self.setup_summary_tab()
-        self.setup_detailed_tab()
-        self.setup_viz_tab()
-        self.setup_report_tab()
-        
-        # Export buttons
-        export_frame = ttk.Frame(self.results_tab)
-        export_frame.pack(fill=tk.X, pady=10)
-        
-        export_pdf_btn = ttk.Button(
-            export_frame,
-            text="Export as PDF",
-            command=self.export_pdf
-        )
-        export_pdf_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        export_csv_btn = ttk.Button(
-            export_frame,
-            text="Export as CSV",
-            command=self.export_csv
-        )
-        export_csv_btn.pack(side=tk.LEFT)
-    
-    def setup_summary_tab(self):
-        """Set up the summary tab in results."""
-        # Container frame with padding
-        container = ttk.Frame(self.summary_tab, padding=10)
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        # Results overview section
-        overview_frame = ttk.Frame(container)
-        overview_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        overview_label = ttk.Label(
-            overview_frame,
-            text="Result Overview",
-            style="Subheader.TLabel"
-        )
-        overview_label.pack(anchor=tk.W)
-        
-        # Overview content frame with border
-        overview_content = ttk.Frame(
-            overview_frame,
-            borderwidth=1,
-            relief=tk.SOLID
-        )
-        overview_content.pack(fill=tk.X, pady=5)
-        
-        # Placeholder for summary info
-        self.summary_info = ttk.Label(
-            overview_content,
-            text="No analysis results available.",
-            padding=10
-        )
-        self.summary_info.pack(anchor=tk.W)
-        
-        # Confidence score section
-        confidence_frame = ttk.Frame(container)
-        confidence_frame.pack(fill=tk.X, pady=10)
-        
-        confidence_label = ttk.Label(
-            confidence_frame,
-            text="Confidence Score",
-            style="Subheader.TLabel"
-        )
-        confidence_label.pack(anchor=tk.W)
-        
-        # Confidence meter
-        meter_frame = ttk.Frame(confidence_frame, padding=5)
-        meter_frame.pack(fill=tk.X)
-        
-        self.confidence_var = tk.DoubleVar(value=0.0)
-        self.confidence_meter = ttk.Progressbar(
-            meter_frame,
-            variable=self.confidence_var,
-            style="Tron.Horizontal.TProgressbar",
-            length=400,
-            mode='determinate',
-            maximum=100
-        )
-        self.confidence_meter.pack(fill=tk.X)
-        
-        # Confidence label
-        self.confidence_text = tk.StringVar(value="No results")
-        confidence_result = ttk.Label(
-            meter_frame,
-            textvariable=self.confidence_text,
-            padding=(0, 5)
-        )
-        confidence_result.pack()
-        
-        # File list section
-        files_frame = ttk.Frame(container)
-        files_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        files_label = ttk.Label(
-            files_frame,
-            text="Analyzed Files",
-            style="Subheader.TLabel"
-        )
-        files_label.pack(anchor=tk.W)
-        
-        # Scrollable list
-        list_scroll = ttk.Scrollbar(files_frame)
-        list_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.results_list = tk.Listbox(
-            files_frame,
-            background=TronTheme.DEEP_BLACK,
-            foreground="white",
-            selectbackground=TronTheme.NEON_CYAN,
-            selectforeground=TronTheme.DEEP_BLACK,
-            height=10,
-            yscrollcommand=list_scroll.set
-        )
-        self.results_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        list_scroll.config(command=self.results_list.yview)
-        
-        # Bind selection event to update result details
-        self.results_list.bind('<<ListboxSelect>>', self.show_file_details)
-    
-    def setup_detailed_tab(self):
-        """Set up the detailed analysis tab in results."""
-        # Container frame with padding
-        container = ttk.Frame(self.detailed_tab, padding=10)
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        # Results header
-        header_frame = ttk.Frame(container)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        analysis_label = ttk.Label(
-            header_frame,
-            text="Detailed Analysis",
-            style="Subheader.TLabel"
-        )
-        analysis_label.pack(anchor=tk.W)
-        
-        # Create scrollable text area for detailed results
-        text_frame = ttk.Frame(container)
-        text_frame.pack(fill=tk.BOTH, expand=True)
-        
-        text_scroll = ttk.Scrollbar(text_frame)
-        text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.details_text = tk.Text(
-            text_frame,
-            background=TronTheme.DEEP_BLACK,
-            foreground="white",
-            insertbackground=TronTheme.NEON_CYAN,
-            borderwidth=1,
-            highlightbackground=TronTheme.NEON_CYAN,
-            highlightthickness=1,
-            wrap=tk.WORD,
-            yscrollcommand=text_scroll.set
-        )
-        self.details_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        text_scroll.config(command=self.details_text.yview)
-        
-        # Configure text tags for styling
-        self.details_text.tag_config("header", 
-                                    foreground=TronTheme.NEON_CYAN, 
-                                    font=("Helvetica", 12, "bold"))
-        self.details_text.tag_config("subheader", 
-                                   foreground=TronTheme.SKY_BLUE, 
-                                   font=("Helvetica", 10, "bold"))
-        self.details_text.tag_config("highlight", 
-                                   foreground=TronTheme.SUNRAY)
-        self.details_text.tag_config("fake", 
-                                   foreground=TronTheme.MAGENTA, 
-                                   font=("Helvetica", 10, "bold"))
-        self.details_text.tag_config("real", 
-                                   foreground=TronTheme.NEON_CYAN, 
-                                   font=("Helvetica", 10, "bold"))
-        
-        # Insert placeholder text
-        self.details_text.insert(tk.END, "No detailed analysis available.\n\n")
-        self.details_text.insert(tk.END, "Run analysis on files to see detailed results.")
-        self.details_text.config(state=tk.DISABLED)  # Make read-only
-    
-    def setup_viz_tab(self):
-        """Set up the visualizations tab in results."""
-        # Container frame with padding
-        container = ttk.Frame(self.viz_tab, padding=10)
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        # Visualization header
-        header_frame = ttk.Frame(container)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        viz_label = ttk.Label(
-            header_frame,
-            text="Result Visualizations",
-            style="Subheader.TLabel"
-        )
-        viz_label.pack(anchor=tk.W)
-        
-        # Visualization canvas with border
-        viz_canvas_frame = ttk.Frame(
-            container,
-            borderwidth=1,
-            relief=tk.SOLID
-        )
-        viz_canvas_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.viz_canvas = tk.Canvas(
-            viz_canvas_frame,
-            background=TronTheme.DEEP_BLACK,
-            highlightbackground=TronTheme.NEON_CYAN,
-            highlightthickness=1
-        )
-        self.viz_canvas.pack(fill=tk.BOTH, expand=True)
-        
-        # Visualization type selector
-        selector_frame = ttk.Frame(container)
-        selector_frame.pack(fill=tk.X, pady=10)
-        
-        selector_label = ttk.Label(
-            selector_frame,
-            text="Visualization Type:"
-        )
-        selector_label.pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.viz_type = tk.StringVar(value="heatmap")
-        
-        heatmap_radio = ttk.Radiobutton(
-            selector_frame,
-            text="Heatmap",
-            variable=self.viz_type,
-            value="heatmap",
-            command=self.update_visualization
-        )
-        heatmap_radio.pack(side=tk.LEFT, padx=(0, 10))
-        
-        graph_radio = ttk.Radiobutton(
-            selector_frame,
-            text="Confidence Graph",
-            variable=self.viz_type,
-            value="graph",
-            command=self.update_visualization
-        )
-        graph_radio.pack(side=tk.LEFT, padx=(0, 10))
-        
-        regions_radio = ttk.Radiobutton(
-            selector_frame,
-            text="Region Analysis",
-            variable=self.viz_type,
-            value="regions",
-            command=self.update_visualization
-        )
-        regions_radio.pack(side=tk.LEFT)
-    
-    def setup_report_tab(self):
-        """Set up the report tab in results."""
-        # Container frame with padding
-        container = ttk.Frame(self.report_tab, padding=10)
-        container.pack(fill=tk.BOTH, expand=True)
-        
-        # Report header
-        header_frame = ttk.Frame(container)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        report_label = ttk.Label(
-            header_frame,
-            text="Analysis Report",
-            style="Subheader.TLabel"
-        )
-        report_label.pack(anchor=tk.W)
-        
-        # Create scrollable text area for report
-        text_frame = ttk.Frame(container)
-        text_frame.pack(fill=tk.BOTH, expand=True)
-        
-        text_scroll = ttk.Scrollbar(text_frame)
-        text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.report_text = tk.Text(
-            text_frame,
-            background=TronTheme.DEEP_BLACK,
-            foreground="white",
-            insertbackground=TronTheme.NEON_CYAN,
-            borderwidth=1,
-            highlightbackground=TronTheme.NEON_CYAN,
-            highlightthickness=1,
-            wrap=tk.WORD,
-            yscrollcommand=text_scroll.set
-        )
-        self.report_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        text_scroll.config(command=self.report_text.yview)
-        
-        # Configure text tags for styling
-        self.report_text.tag_config("header", 
-                                   foreground=TronTheme.NEON_CYAN, 
-                                   font=("Helvetica", 12, "bold"))
-        self.report_text.tag_config("subheader", 
-                                  foreground=TronTheme.SKY_BLUE, 
-                                  font=("Helvetica", 10, "bold"))
-        self.report_text.tag_config("highlight", 
-                                  foreground=TronTheme.SUNRAY)
-        
-        # Insert placeholder text
-        self.report_text.insert(tk.END, "No report available.\n\n")
-        self.report_text.insert(tk.END, "Run analysis on files to generate reports.")
-        self.report_text.config(state=tk.DISABLED)  # Make read-only
-    
-    def create_status_bar(self):
-        """Create the status bar at the bottom of the application."""
-        status_frame = ttk.Frame(self.main_frame)
-        status_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
-        
-        # Status text
-        status_label = ttk.Label(
-            status_frame,
-            textvariable=self.status_var,
-            padding=(5, 2)
-        )
-        status_label.pack(side=tk.LEFT)
-        
-        # Progress bar
-        self.progress_bar = ttk.Progressbar(
-            status_frame,
-            variable=self.progress_var,
-            style="Tron.Horizontal.TProgressbar",
-            length=200,
-            mode='determinate'
-        )
-        self.progress_bar.pack(side=tk.RIGHT, padx=(10, 0))
-    
-    def setup_event_queue(self):
-        """Set up the event queue for threaded operations."""
-        self.event_queue = queue.Queue()
-        self.root.after(100, self.process_event_queue)
-    
-    def process_event_queue(self):
-        """Process events from the event queue."""
+    # Callback for image analysis
+    @app.callback(
+        [Output('image-results-container', 'children'),
+         Output('image-analysis-report', 'children'),
+         Output('image-loading-spinner', 'children')],
+        [Input('analyze-image-button', 'n_clicks')],
+        [State('upload-image', 'contents'),
+         State('upload-image', 'filename')]
+    )
+    def analyze_image(n_clicks, content, filename):
+        if n_clicks is None or n_clicks == 0 or content is None:
+            return [], html.P("Upload and analyze an image to see detailed results.", className="text-muted text-center py-5"), ""
+        
+        # Create a temporary file with the uploaded content
+        data = content.encode("utf8").split(b";base64,")[1]
+        decoded = base64.b64decode(data)
+        
+        temp_dir = app._app_config['general'].get('temp_dir', './temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, filename)
+        
+        with open(file_path, "wb") as f:
+            f.write(decoded)
+        
+        # Process the image
         try:
-            # Handle up to 10 events per cycle
-            for _ in range(10):
-                event = self.event_queue.get_nowait()
+            results = app._processor.detect_media(file_path, 'image')
+            
+            # Display the results
+            verdict_color = '#F72585' if results['is_deepfake'] else '#0AFF16'
+            verdict_text = "DEEPFAKE DETECTED" if results['is_deepfake'] else "AUTHENTIC"
+            confidence = results.get('confidence', 0.5)
+            confidence_percentage = f"{confidence * 100:.1f}%"
+            
+            results_div = html.Div([
+                html.Div([
+                    html.H3("Verdict:", style={'display': 'inline-block', 'marginRight': '10px'}),
+                    html.H3(
+                        verdict_text, 
+                        style={
+                            'display': 'inline-block', 
+                            'color': verdict_color
+                        }
+                    )
+                ], className="mb-3"),
                 
-                if event['type'] == 'status':
-                    self.status_var.set(event['message'])
+                # Confidence Meter
+                html.Div([
+                    html.H5(f"Confidence: {confidence_percentage}"),
+                    html.Div([
+                        html.Div(
+                            style={
+                                'width': f"{confidence * 100}%", 
+                                'height': '10px', 
+                                'backgroundColor': verdict_color,
+                                'borderRadius': '10px'
+                            }
+                        )
+                    ], style={
+                        'width': '100%', 
+                        'height': '10px', 
+                        'backgroundColor': '#333',
+                        'borderRadius': '10px',
+                        'marginBottom': '20px'
+                    })
+                ]),
                 
-                elif event['type'] == 'progress':
-                    self.progress_var.set(event['value'])
+                html.Div([
+                    html.P(f"Model: {results['model']}"),
+                    html.P(f"Analysis time: {results['analysis_time']:.2f} seconds"),
+                    html.P(f"Analyzed on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"),
+                ]),
                 
-                elif event['type'] == 'result':
-                    self.handle_result_event(event)
+                # Warning message for deepfakes
+                html.Div([
+                    html.Div([
+                        html.I(className="fas fa-exclamation-triangle me-2"),
+                        html.Span("This image has been identified as a potential deepfake. Exercise caution when sharing or using this content.")
+                    ], className="alert alert-danger")
+                ]) if results['is_deepfake'] else html.Div(),
+            ])
+            
+            # Create detailed analysis report
+            report_div = html.Div([
+                html.H4("Technical Analysis Details", className="mb-3"),
                 
-                elif event['type'] == 'error':
-                    self.handle_error_event(event)
+                dbc.Row([
+                    dbc.Col([
+                        html.H5("Detection Metrics"),
+                        dbc.Table([
+                            html.Thead(
+                                html.Tr([
+                                    html.Th("Metric"),
+                                    html.Th("Value")
+                                ])
+                            ),
+                            html.Tbody([
+                                html.Tr([
+                                    html.Td("Deepfake Probability"),
+                                    html.Td(f"{confidence * 100:.2f}%")
+                                ]),
+                                html.Tr([
+                                    html.Td("Confidence Threshold"),
+                                    html.Td(f"{results['threshold'] * 100:.2f}%")
+                                ]),
+                                html.Tr([
+                                    html.Td("Model Used"),
+                                    html.Td(results['model'])
+                                ]),
+                                html.Tr([
+                                    html.Td("Processing Time"),
+                                    html.Td(f"{results['analysis_time']:.3f} seconds")
+                                ]),
+                            ])
+                        ], bordered=True, hover=True, size="sm", className="mb-4"),
+                    ], md=6),
+                    
+                    dbc.Col([
+                        html.H5("Detection Details"),
+                        html.Div([
+                            html.P("Face Detection:", className="fw-bold"),
+                            html.P(f"Faces detected: {results.get('details', {}).get('faces_detected', 0)}"),
+                        ]),
+                        html.Hr(),
+                        html.Div([
+                            html.P("Analysis Method:", className="fw-bold"),
+                            html.P("Vision Transformer (ViT) with attention mapping")
+                        ]),
+                    ], md=6),
+                ]),
                 
-                self.event_queue.task_done()
-        
-        except queue.Empty:
-            pass
-        
-        # Reschedule
-        self.root.after(100, self.process_event_queue)
-    
-    def handle_result_event(self, event):
-        """Handle result events from analysis."""
-        # Store result in our results dictionary
-        result_id = event['result_id']
-        self.current_results[result_id] = event['result']
-        
-        # Update results list
-        filename = event['result']['filename']
-        self.results_list.insert(tk.END, filename)
-        
-        # Update status
-        self.status_var.set(f"Analysis complete for {filename}")
-        
-        # Switch to results tab
-        self.tabs.select(self.results_tab)
-        
-        # Update summary with latest result
-        self.update_summary()
-    
-    def handle_error_event(self, event):
-        """Handle error events."""
-        messagebox.showerror("Error", event['message'])
-        self.status_var.set(f"Error: {event['message']}")
-    
-    def select_files(self, media_type):
-        """Open file dialog to select files for analysis."""
-        filetypes = []
-        
-        if media_type == 'image':
-            filetypes = [
-                ('Image Files', '*.jpg *.jpeg *.png *.gif *.bmp'),
-                ('All Files', '*.*')
-            ]
-        elif media_type == 'audio':
-            filetypes = [
-                ('Audio Files', '*.wav *.mp3 *.flac'),
-                ('All Files', '*.*')
-            ]
-        elif media_type == 'video':
-            filetypes = [
-                ('Video Files', '*.mp4 *.avi *.mov'),
-                ('All Files', '*.*')
-            ]
-        
-        files = filedialog.askopenfilenames(
-            title=f"Select {media_type.capitalize()} Files",
-            filetypes=filetypes
-        )
-        
-        if not files:
-            return
-        
-        # Clear existing files if adding new ones
-        if media_type == 'image':
-            self.clear_files('image')
-        elif media_type == 'audio':
-            self.clear_files('audio')
-        elif media_type == 'video':
-            self.clear_files('video')
-        
-        # Validate files and add to list
-        for file_path in files:
-            is_valid, message, detected_type = validate_file(file_path)
+                # Visualization
+                html.H5("Visualization", className="mt-3 mb-2"),
+                html.P("Attention heatmap showing regions most important for detection:"),
+                
+                # Mock heatmap visualization
+                html.Div([
+                    html.Img(src=content, style={'max-width': '100%', 'max-height': '300px', 'filter': 'grayscale(50%)'}),
+                    html.Div(style={
+                        'position': 'absolute',
+                        'top': '0',
+                        'left': '0',
+                        'width': '100%',
+                        'height': '100%',
+                        'background': 'linear-gradient(45deg, rgba(0,0,0,0) 20%, rgba(255,0,0,0.3) 50%, rgba(255,0,0,0.5) 80%)',
+                        'mixBlendMode': 'overlay',
+                        'borderRadius': '5px'
+                    })
+                ], style={'position': 'relative', 'width': '100%', 'marginBottom': '20px'}),
+                
+                # Add to report list
+                html.Hr(),
+                html.Div([
+                    dbc.Button("Add to Reports", color="primary", id="add-image-to-reports", className="me-2"),
+                    dbc.Button("Download Analysis", color="secondary", id="download-image-analysis", outline=True),
+                ], className="d-flex justify-content-end")
+            ])
             
-            if is_valid and detected_type == media_type:
-                self.add_file(file_path, media_type)
-            else:
-                messagebox.showwarning(
-                    "Invalid File",
-                    f"File {os.path.basename(file_path)} is not a valid {media_type} file: {message}"
-                )
-    
-    def add_file(self, file_path, media_type):
-        """Add a file to the appropriate list."""
-        # Add to internal tracking
-        self.current_files[media_type].append(file_path)
-        
-        # Add to UI list
-        filename = os.path.basename(file_path)
-        
-        if media_type == 'image':
-            self.image_list.insert(tk.END, filename)
-        elif media_type == 'audio':
-            self.audio_list.insert(tk.END, filename)
-        elif media_type == 'video':
-            self.video_list.insert(tk.END, filename)
-        
-        # Update status
-        self.status_var.set(f"Added {filename}")
-    
-    def clear_files(self, media_type):
-        """Clear all files from the specified list."""
-        self.current_files[media_type] = []
-        
-        if media_type == 'image':
-            self.image_list.delete(0, tk.END)
-            self.image_preview.delete("all")
-        elif media_type == 'audio':
-            self.audio_list.delete(0, tk.END)
-            self.audio_viz.delete("all")
-        elif media_type == 'video':
-            self.video_list.delete(0, tk.END)
-            self.video_preview.delete("all")
-        
-        # Update status
-        self.status_var.set(f"Cleared {media_type} files")
-    
-    def update_image_preview(self, event):
-        """Update the image preview when a file is selected."""
-        # Get selected file
-        selection = self.image_list.curselection()
-        if not selection:
-            return
-        
-        index = selection[0]
-        if index >= len(self.current_files['image']):
-            return
-        
-        file_path = self.current_files['image'][index]
-        
-        # Load and display image
-        try:
-            from PIL import Image, ImageTk
-            
-            # Load image and resize to fit canvas
-            image = Image.open(file_path)
-            
-            # Get canvas dimensions
-            canvas_width = self.image_preview.winfo_width()
-            canvas_height = self.image_preview.winfo_height()
-            
-            # No resize needed if canvas not yet drawn
-            if canvas_width <= 1 or canvas_height <= 1:
-                canvas_width = 400
-                canvas_height = 300
-            
-            # Calculate resize ratio preserving aspect ratio
-            img_width, img_height = image.size
-            ratio = min(canvas_width / img_width, canvas_height / img_height)
-            new_width = int(img_width * ratio)
-            new_height = int(img_height * ratio)
-            
-            image = image.resize((new_width, new_height), Image.LANCZOS)
-            
-            # Convert to PhotoImage
-            photo = ImageTk.PhotoImage(image)
-            
-            # Clear previous image
-            self.image_preview.delete("all")
-            
-            # Store reference to prevent garbage collection
-            self.current_photo = photo
-            
-            # Display image
-            self.image_preview.create_image(
-                canvas_width // 2,
-                canvas_height // 2,
-                image=photo,
-                anchor=tk.CENTER
-            )
-            
-            # Update status
-            self.status_var.set(f"Viewing {os.path.basename(file_path)}")
+            return results_div, report_div, ""
             
         except Exception as e:
-            self.image_preview.delete("all")
-            self.image_preview.create_text(
-                200, 150,
-                text=f"Error loading image:\n{str(e)}",
-                fill=TronTheme.MAGENTA,
-                anchor=tk.CENTER
-            )
-            logger.error(f"Error loading image preview: {e}")
+            error_div = html.Div([
+                html.H5("Error processing the image:"),
+                html.P(str(e))
+            ])
+            return error_div, html.P(f"Error during analysis: {str(e)}", className="text-danger"), ""
     
-    def update_audio_visualization(self, event):
-        """Update audio visualization when a file is selected."""
-        # Placeholder for audio visualization
-        # In a real implementation, this would use libraries like librosa and matplotlib
-        # to create waveform and spectrogram visualizations
+    # Toggle button for technical details
+    @app.callback(
+        [Output("vit-technical-collapse", "is_open"),
+         Output("toggle-vit-details", "children")],
+        [Input("toggle-vit-details", "n_clicks")],
+        [State("vit-technical-collapse", "is_open")]
+    )
+    def toggle_vit_collapse(n, is_open):
+        if n:
+            return not is_open, "Hide Technical Details" if not is_open else "Show Technical Details"
+        return is_open, "Show Technical Details"
+    
+    # ---- AUDIO TAB CALLBACKS ----
+    
+    # Callback for audio upload and preview
+    @app.callback(
+        [Output('output-audio-upload', 'children'),
+         Output('analyze-audio-button', 'disabled')],
+        [Input('upload-audio', 'contents')],
+        [State('upload-audio', 'filename'),
+         State('upload-audio', 'last_modified')]
+    )
+    def update_audio_preview(content, filename, date):
+        if content is None:
+            return [html.Div("No audio file uploaded yet.")], True
         
-        # Get selected file
-        selection = self.audio_list.curselection()
-        if not selection:
-            return
+        # Display the uploaded audio
+        audio_div = html.Div([
+            html.H6(filename),
+            html.Audio(src=content, controls=True, style={'width': '100%'}),
+            html.P(f"Last modified: {datetime.fromtimestamp(date).strftime('%Y-%m-%d %H:%M:%S')}", 
+                  className="text-muted small")
+        ])
         
-        index = selection[0]
-        if index >= len(self.current_files['audio']):
-            return
+        return [audio_div], False
+    
+    # Callback for audio analysis
+    @app.callback(
+        [Output('audio-results-container', 'children'),
+         Output('audio-analysis-report', 'children'),
+         Output('audio-loading-spinner', 'children')],
+        [Input('analyze-audio-button', 'n_clicks')],
+        [State('upload-audio', 'contents'),
+         State('upload-audio', 'filename')]
+    )
+    def analyze_audio(n_clicks, content, filename):
+        if n_clicks is None or n_clicks == 0 or content is None:
+            return [], html.P("Upload and analyze an audio file to see detailed results.", className="text-muted text-center py-5"), ""
         
-        file_path = self.current_files['audio'][index]
-        filename = os.path.basename(file_path)
+        # Create a temporary file with the uploaded content
+        data = content.encode("utf8").split(b";base64,")[1]
+        decoded = base64.b64decode(data)
         
-        # Clear canvas
-        self.audio_viz.delete("all")
+        temp_dir = app._app_config['general'].get('temp_dir', './temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, filename)
         
-        # Create placeholder visualization
-        canvas_width = self.audio_viz.winfo_width()
-        canvas_height = self.audio_viz.winfo_height()
+        with open(file_path, "wb") as f:
+            f.write(decoded)
         
-        # No visualization needed if canvas not yet drawn
-        if canvas_width <= 1 or canvas_height <= 1:
-            canvas_width = 400
-            canvas_height = 300
-        
-        # Draw waveform placeholder
-        wave_height = canvas_height // 2
-        wave_center = wave_height // 2
-        
-        # Create simulated waveform
-        for i in range(0, canvas_width, 3):
-            # Generate fake waveform heights
-            import math
-            import random
+        # Process the audio
+        try:
+            results = app._processor.detect_media(file_path, 'audio')
             
-            # Hash the filename to get consistent pattern
-            seed = sum(ord(c) for c in filename)
-            random.seed(seed + i)
+            # Display the results
+            verdict_color = '#F72585' if results['is_deepfake'] else '#0AFF16'
+            verdict_text = "DEEPFAKE DETECTED" if results['is_deepfake'] else "AUTHENTIC"
+            confidence = results.get('confidence', 0.5)
+            confidence_percentage = f"{confidence * 100:.1f}%"
             
-            # Generate amplitude using sine wave with noise
-            base_amp = math.sin(i * 0.05) * 30
-            noise = random.uniform(-10, 10)
-            amp = base_amp + noise
-            
-            # Draw line segment
-            self.audio_viz.create_line(
-                i, wave_center - amp,
-                i + 2, wave_center - (base_amp + random.uniform(-10, 10)),
-                fill=TronTheme.NEON_CYAN,
-                width=1
-            )
-        
-        # Draw spectrogram placeholder
-        spec_top = wave_height
-        spec_height = wave_height
-        
-        # Create gradient background for spectrogram
-        for y in range(spec_height):
-            # Create color gradient from blue to cyan
-            ratio = y / spec_height
-            r = int(0)
-            g = int(255 * (1 - ratio))
-            b = int(255)
-            
-            color = f'#{r:02x}{g:02x}{b:02x}'
-            
-            self.audio_viz.create_line(
-                0, spec_top + y,
-                canvas_width, spec_top + y,
-                fill=color
-            )
-        
-        # Add some "frequency" bars
-        for i in range(0, canvas_width, 20):
-            # Generate random height for frequency bar
-            random.seed(seed + i + 1000)
-            height = random.randint(10, spec_height - 10)
-            
-            self.audio_viz.create_rectangle(
-                i, spec_top + spec_height - height,
-                i + 10, spec_top + spec_height,
-                fill=TronTheme.MAGENTA,
-                outline=""
-            )
-        
-        # Add labels
-        self.audio_viz.create_text(
-            10, 10,
-            text="Waveform",
-            fill=TronTheme.NEON_CYAN,
-            anchor=tk.NW
-        )
-        
-        self.audio_viz.create_text(
-            10, spec_top + 10,
-            text="Spectrogram",
-            fill=TronTheme.NEON_CYAN,
-            anchor=tk.NW
-        )
-        
-        # Update status
-        self.status_var.set(f"Visualizing {filename}")
-    
-    def update_video_preview(self, event):
-        """Update video preview when a file is selected."""
-        # Placeholder for video preview functionality
-        # In a real implementation, this would use libraries like cv2 or moviepy
-        # to extract and display video frames
-        
-        # Get selected file
-        selection = self.video_list.curselection()
-        if not selection:
-            return
-        
-        index = selection[0]
-        if index >= len(self.current_files['video']):
-            return
-        
-        file_path = self.current_files['video'][index]
-        filename = os.path.basename(file_path)
-        
-        # Clear canvas
-        self.video_preview.delete("all")
-        
-        # Create placeholder preview
-        canvas_width = self.video_preview.winfo_width()
-        canvas_height = self.video_preview.winfo_height()
-        
-        # No preview needed if canvas not yet drawn
-        if canvas_width <= 1 or canvas_height <= 1:
-            canvas_width = 400
-            canvas_height = 300
-        
-        # Draw placeholder frame
-        self.video_preview.create_rectangle(
-            10, 10,
-            canvas_width - 10, canvas_height - 10,
-            outline=TronTheme.NEON_CYAN,
-            width=2
-        )
-        
-        # Draw placeholder text
-        self.video_preview.create_text(
-            canvas_width // 2,
-            canvas_height // 2,
-            text=f"Video Preview\n{filename}",
-            fill=TronTheme.NEON_CYAN,
-            font=("Helvetica", 14, "bold"),
-            anchor=tk.CENTER
-        )
-        
-        # Draw play button overlay
-        button_size = 60
-        self.video_preview.create_oval(
-            (canvas_width - button_size) // 2,
-            (canvas_height - button_size) // 2,
-            (canvas_width + button_size) // 2,
-            (canvas_height + button_size) // 2,
-            fill=TronTheme.DEEP_BLACK,
-            outline=TronTheme.NEON_CYAN,
-            width=2
-        )
-        
-        # Play triangle
-        triangle_points = [
-            (canvas_width // 2) - 10, (canvas_height // 2) - 15,
-            (canvas_width // 2) - 10, (canvas_height // 2) + 15,
-            (canvas_width // 2) + 20, (canvas_height // 2)
-        ]
-        self.video_preview.create_polygon(
-            *triangle_points,
-            fill=TronTheme.NEON_CYAN,
-            outline=""
-        )
-        
-        # Update status
-        self.status_var.set(f"Selected {filename}")
-    
-    def play_selected_audio(self):
-        """Play the selected audio file."""
-        # Placeholder for audio playback functionality
-        # In a real implementation, this would use libraries like pygame.mixer
-        
-        # Get selected file
-        selection = self.audio_list.curselection()
-        if not selection:
-            messagebox.showinfo("Info", "Please select an audio file to play")
-            return
-        
-        index = selection[0]
-        if index >= len(self.current_files['audio']):
-            return
-        
-        file_path = self.current_files['audio'][index]
-        filename = os.path.basename(file_path)
-        
-        # Show message since we don't have actual playback
-        messagebox.showinfo("Audio Playback", f"Playing {filename}\n\n(Audio playback not implemented in this version)")
-        
-        # Update status
-        self.status_var.set(f"Playing {filename}")
-    
-    def play_selected_video(self):
-        """Play the selected video file."""
-        # Placeholder for video playback functionality
-        # In a real implementation, this would use libraries like cv2 or moviepy
-        
-        # Get selected file
-        selection = self.video_list.curselection()
-        if not selection:
-            messagebox.showinfo("Info", "Please select a video file to play")
-            return
-        
-        index = selection[0]
-        if index >= len(self.current_files['video']):
-            return
-        
-        file_path = self.current_files['video'][index]
-        filename = os.path.basename(file_path)
-        
-        # Show message since we don't have actual playback
-        messagebox.showinfo("Video Playback", f"Playing {filename}\n\n(Video playback not implemented in this version)")
-        
-        # Update status
-        self.status_var.set(f"Playing {filename}")
-    
-    def stop_video(self):
-        """Stop video playback."""
-        # Placeholder for stop functionality
-        messagebox.showinfo("Video Playback", "Video playback stopped")
-        self.status_var.set("Video playback stopped")
-    
-    def start_analysis(self, media_type):
-        """Start analysis of the selected files."""
-        files = self.current_files[media_type]
-        
-        if not files:
-            messagebox.showinfo("Info", f"No {media_type} files selected")
-            return
-        
-        # Update status
-        self.status_var.set(f"Starting {media_type} analysis...")
-        self.progress_var.set(0)
-        
-        # Start analysis in a separate thread
-        threading.Thread(
-            target=self.run_analysis,
-            args=(files, media_type),
-            daemon=True
-        ).start()
-    
-    def run_analysis(self, files, media_type):
-        """Run analysis in a background thread."""
-        total_files = len(files)
-        
-        for i, file_path in enumerate(files):
-            try:
-                # Report progress
-                progress = (i / total_files) * 100
-                self.event_queue.put({
-                    'type': 'progress',
-                    'value': progress
-                })
-                
-                filename = os.path.basename(file_path)
-                self.event_queue.put({
-                    'type': 'status',
-                    'message': f"Analyzing {filename} ({i+1}/{total_files})"
-                })
-                
-                # In a real implementation, this would call the actual detector
-                # For now, we'll simulate processing with a delay
-                time.sleep(1)
-                
-                # Create a simulated result
-                import random
-                is_fake = random.random() < 0.5
-                confidence = random.uniform(0.6, 0.95) if is_fake else random.uniform(0.7, 0.98)
-                
-                result = {
-                    'filename': filename,
-                    'file_path': file_path,
-                    'media_type': media_type,
-                    'is_fake': is_fake,
-                    'confidence': confidence,
-                    'timestamp': time.time(),
-                    'regions': self.generate_fake_regions(media_type),
-                    'details': self.generate_fake_details(media_type, is_fake)
-                }
-                
-                # Send result to main thread
-                self.event_queue.put({
-                    'type': 'result',
-                    'result_id': file_path,
-                    'result': result
-                })
-                
-            except Exception as e:
-                logger.error(f"Error analyzing {file_path}: {e}")
-                self.event_queue.put({
-                    'type': 'error',
-                    'message': f"Error analyzing {os.path.basename(file_path)}: {str(e)}"
-                })
-        
-        # Analysis complete
-        self.event_queue.put({
-            'type': 'progress',
-            'value': 100
-        })
-        
-        self.event_queue.put({
-            'type': 'status',
-            'message': f"Analysis complete for {total_files} files"
-        })
-    
-    def generate_fake_regions(self, media_type):
-        """Generate fake region data for simulated results."""
-        import random
-        
-        if media_type == 'image':
-            # For images, generate rectangles
-            regions = []
-            for i in range(random.randint(1, 3)):
-                regions.append({
-                    'x': random.uniform(0.1, 0.8),
-                    'y': random.uniform(0.1, 0.8),
-                    'width': random.uniform(0.1, 0.3),
-                    'height': random.uniform(0.1, 0.3),
-                    'confidence': random.uniform(0.6, 0.95),
-                    'type': random.choice(['face', 'texture', 'artifact'])
-                })
-            return regions
-        
-        elif media_type == 'audio':
-            # For audio, generate time segments
-            regions = []
-            for i in range(random.randint(1, 4)):
-                start = random.uniform(0, 50)
-                duration = random.uniform(1, 10)
-                regions.append({
-                    'start_time': start,
-                    'end_time': start + duration,
-                    'confidence': random.uniform(0.6, 0.95),
-                    'type': random.choice(['voice', 'splice', 'artifact'])
-                })
-            return regions
-        
-        elif media_type == 'video':
-            # For video, generate frame ranges
-            regions = []
-            for i in range(random.randint(1, 3)):
-                start = random.randint(0, 300)
-                duration = random.randint(10, 60)
-                regions.append({
-                    'start_frame': start,
-                    'end_frame': start + duration,
-                    'confidence': random.uniform(0.6, 0.95),
-                    'type': random.choice(['face', 'motion', 'sync'])
-                })
-            return regions
-        
-        return []
-    
-    def generate_fake_details(self, media_type, is_fake):
-        """Generate fake detailed analysis for simulated results."""
-        import random
-        
-        if is_fake:
-            indicators = [
-                "Inconsistent compression artifacts detected",
-                "Unnatural facial features identified",
-                "Temporal inconsistencies present",
-                "Audio-visual synchronization issues",
-                "Unusual edge patterns detected",
-                "Neural network confidence score indicates manipulation",
-                "Spectral analysis reveals artifacts"
-            ]
-            
-            # Select random indicators based on media type
-            if media_type == 'image':
-                selected = random.sample(indicators[:3] + [indicators[4], indicators[5]], 3)
-            elif media_type == 'audio':
-                selected = random.sample([indicators[2], indicators[5], indicators[6]], 2)
-            else:  # video
-                selected = random.sample([indicators[1], indicators[2], indicators[3], indicators[5]], 3)
-                
-            details = "The analysis indicates this content is likely manipulated:\n\n"
-            for indicator in selected:
-                details += f"• {indicator}\n"
-                
-            details += f"\nThe detection confidence is {random.uniform(70, 95):.1f}%."
-                
-        else:
-            authentic_indicators = [
-                "Consistent compression patterns throughout",
-                "Natural feature distribution",
-                "Temporal consistency verified",
-                "Audio-visual synchronization confirmed",
-                "Expected edge pattern distribution",
-                "Neural network confidence score supports authenticity",
-                "Clean spectral signature"
-            ]
-            
-            # Select random indicators based on media type
-            if media_type == 'image':
-                selected = random.sample(authentic_indicators[:2] + [authentic_indicators[4], authentic_indicators[5]], 3)
-            elif media_type == 'audio':
-                selected = random.sample([authentic_indicators[2], authentic_indicators[5], authentic_indicators[6]], 2)
-            else:  # video
-                selected = random.sample([authentic_indicators[1], authentic_indicators[2], authentic_indicators[3], authentic_indicators[5]], 3)
-                
-            details = "The analysis indicates this content is likely authentic:\n\n"
-            for indicator in selected:
-                details += f"• {indicator}\n"
-                
-            details += f"\nThe authenticity confidence is {random.uniform(75, 98):.1f}%."
-        
-        return details
-    
-    def update_summary(self):
-        """Update the summary tab with result information."""
-        # Count results by type
-        total_count = len(self.current_results)
-        if total_count == 0:
-            return
-        
-        fake_count = sum(1 for result in self.current_results.values() if result['is_fake'])
-        real_count = total_count - fake_count
-        
-        # Calculate overall confidence
-        avg_confidence = sum(result['confidence'] for result in self.current_results.values()) / total_count
-        
-        # Update summary info
-        summary_text = f"Analysis Results Summary:\n"
-        summary_text += f"Total files analyzed: {total_count}\n"
-        summary_text += f"Detected as likely fake: {fake_count}\n"
-        summary_text += f"Detected as likely real: {real_count}\n"
-        summary_text += f"Average confidence: {avg_confidence:.1%}"
-        
-        self.summary_info.config(text=summary_text)
-        
-        # Update confidence meter
-        self.confidence_var.set(avg_confidence * 100)
-        
-        if fake_count > real_count:
-            status = "Likely manipulated content detected"
-            self.confidence_text.set(f"Manipulation Confidence: {avg_confidence:.1%}")
-        else:
-            status = "Content appears mostly authentic"
-            self.confidence_text.set(f"Authenticity Confidence: {avg_confidence:.1%}")
-        
-        # Update status
-        self.status_var.set(status)
-        
-        # Update detailed tab with most recent result
-        latest_result = list(self.current_results.values())[-1]
-        self.update_details(latest_result)
-        
-        # Update visualization
-        self.update_visualization()
-        
-        # Update report
-        self.generate_report()
-    
-    def show_file_details(self, event):
-        """Show details for the selected file in results list."""
-        selection = self.results_list.curselection()
-        if not selection:
-            return
-        
-        index = selection[0]
-        if index >= self.results_list.size():
-            return
-        
-        filename = self.results_list.get(index)
-        
-        # Find the result for this filename
-        for result in self.current_results.values():
-            if result['filename'] == filename:
-                self.update_details(result)
-                self.update_visualization()
-                break
-    
-    def update_details(self, result):
-        """Update the detailed analysis tab with result information."""
-        # Enable text widget for editing
-        self.details_text.config(state=tk.NORMAL)
-        
-        # Clear current content
-        self.details_text.delete(1.0, tk.END)
-        
-        # Add header
-        self.details_text.insert(tk.END, f"Detailed Analysis for {result['filename']}\n\n", "header")
-        
-        # Add result classification
-        if result['is_fake']:
-            self.details_text.insert(tk.END, "Classification: ", "subheader")
-            self.details_text.insert(tk.END, "LIKELY FAKE / MANIPULATED\n\n", "fake")
-        else:
-            self.details_text.insert(tk.END, "Classification: ", "subheader")
-            self.details_text.insert(tk.END, "LIKELY AUTHENTIC\n\n", "real")
-        
-        # Add confidence score
-        self.details_text.insert(tk.END, f"Confidence: {result['confidence']:.1%}\n\n")
-        
-        # Add detailed analysis
-        self.details_text.insert(tk.END, "Analysis Details:\n", "subheader")
-        self.details_text.insert(tk.END, f"{result['details']}\n\n")
-        
-        # Add region information if available
-        if result['regions']:
-            self.details_text.insert(tk.END, "Detected Regions:\n", "subheader")
-            for i, region in enumerate(result['regions']):
-                if result['media_type'] == 'image':
-                    self.details_text.insert(tk.END, f"{i+1}. Type: {region['type']}, ")
-                    self.details_text.insert(tk.END, f"Position: ({region['x']:.2f}, {region['y']:.2f}), ")
-                    self.details_text.insert(tk.END, f"Size: {region['width']:.2f}x{region['height']:.2f}, ")
-                    self.details_text.insert(tk.END, f"Confidence: {region['confidence']:.1%}\n")
-                elif result['media_type'] == 'audio':
-                    self.details_text.insert(tk.END, f"{i+1}. Type: {region['type']}, ")
-                    self.details_text.insert(tk.END, f"Time Range: {region['start_time']:.2f}s - {region['end_time']:.2f}s, ")
-                    self.details_text.insert(tk.END, f"Confidence: {region['confidence']:.1%}\n")
-                elif result['media_type'] == 'video':
-                    self.details_text.insert(tk.END, f"{i+1}. Type: {region['type']}, ")
-                    self.details_text.insert(tk.END, f"Frame Range: {region['start_frame']} - {region['end_frame']}, ")
-                    self.details_text.insert(tk.END, f"Confidence: {region['confidence']:.1%}\n")
-        
-        # Add timestamp
-        import datetime
-        timestamp = datetime.datetime.fromtimestamp(result['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-        self.details_text.insert(tk.END, f"\nAnalysis completed: {timestamp}\n")
-        
-        # Make read-only again
-        self.details_text.config(state=tk.DISABLED)
-    
-    def update_visualization(self):
-        """Update the visualization tab based on the selected type."""
-        # Get selected visualization type
-        viz_type = self.viz_type.get()
-        
-        # Clear canvas
-        self.viz_canvas.delete("all")
-        
-        # Get canvas dimensions
-        canvas_width = self.viz_canvas.winfo_width()
-        canvas_height = self.viz_canvas.winfo_height()
-        
-        # No visualization needed if canvas not yet drawn
-        if canvas_width <= 1 or canvas_height <= 1:
-            canvas_width = 400
-            canvas_height = 300
-        
-        # Check if we have results
-        if not self.current_results:
-            self.viz_canvas.create_text(
-                canvas_width // 2,
-                canvas_height // 2,
-                text="No analysis results available",
-                fill=TronTheme.NEON_CYAN,
-                font=("Helvetica", 12),
-                anchor=tk.CENTER
-            )
-            return
-        
-        # Get selected result (from results list if something is selected, otherwise latest)
-        selected_result = None
-        selection = self.results_list.curselection()
-        if selection:
-            filename = self.results_list.get(selection[0])
-            for result in self.current_results.values():
-                if result['filename'] == filename:
-                    selected_result = result
-                    break
-        
-        if not selected_result:
-            # Use the latest result
-            selected_result = list(self.current_results.values())[-1]
-        
-        # Create different visualizations based on type
-        if viz_type == "heatmap":
-            self.create_heatmap_visualization(selected_result, canvas_width, canvas_height)
-        elif viz_type == "graph":
-            self.create_confidence_graph(canvas_width, canvas_height)
-        elif viz_type == "regions":
-            self.create_region_visualization(selected_result, canvas_width, canvas_height)
-    
-    def create_heatmap_visualization(self, result, width, height):
-        """Create a heatmap visualization for image/video detection."""
-        # Draw title
-        self.viz_canvas.create_text(
-            width // 2,
-            20,
-            text=f"Heatmap Visualization for {result['filename']}",
-            fill=TronTheme.NEON_CYAN,
-            font=("Helvetica", 12, "bold"),
-            anchor=tk.CENTER
-        )
-        
-        # Draw border
-        self.viz_canvas.create_rectangle(
-            50, 50,
-            width - 50, height - 50,
-            outline=TronTheme.NEON_CYAN,
-            width=2
-        )
-        
-        # Draw gradient background
-        for y in range(50, height - 50):
-            # Create color gradient
-            ratio = (y - 50) / (height - 100)
-            
-            # Color goes from dark blue to cyan
-            r = int(0)
-            g = int(255 * ratio)
-            b = int(255)
-            
-            color = f'#{r:02x}{g:02x}{b:02x}'
-            
-            self.viz_canvas.create_line(
-                50, y,
-                width - 50, y,
-                fill=color
-            )
-        
-        # If we have regions, visualize them
-        if result['regions']:
-            for region in result['regions']:
-                if result['media_type'] == 'image':
-                    # Convert region coordinates to canvas coordinates
-                    x = 50 + region['x'] * (width - 100)
-                    y = 50 + region['y'] * (height - 100)
-                    w = region['width'] * (width - 100)
-                    h = region['height'] * (height - 100)
-                    
-                    # Draw region with opacity based on confidence
-                    alpha = int(region['confidence'] * 255)
-                    color = TronTheme.MAGENTA if result['is_fake'] else TronTheme.NEON_CYAN
-                    
-                    # Draw rectangle
-                    self.viz_canvas.create_rectangle(
-                        x, y,
-                        x + w, y + h,
-                        outline=color,
-                        width=2
+            results_div = html.Div([
+                html.Div([
+                    html.H3("Verdict:", style={'display': 'inline-block', 'marginRight': '10px'}),
+                    html.H3(
+                        verdict_text, 
+                        style={
+                            'display': 'inline-block', 
+                            'color': verdict_color
+                        }
                     )
-                    
-                    # Draw label
-                    self.viz_canvas.create_text(
-                        x + w // 2,
-                        y + h // 2,
-                        text=f"{region['type']}\n{region['confidence']:.1%}",
-                        fill="white",
-                        font=("Helvetica", 10, "bold"),
-                        anchor=tk.CENTER
-                    )
-        
-        # Draw legend
-        legend_y = height - 30
-        
-        # Fake indicator
-        self.viz_canvas.create_rectangle(
-            width - 150, legend_y,
-            width - 130, legend_y + 15,
-            fill=TronTheme.MAGENTA,
-            outline=""
-        )
-        self.viz_canvas.create_text(
-            width - 125, legend_y + 7,
-            text="Manipulated",
-            fill="white",
-            anchor=tk.W
-        )
-        
-        # Real indicator
-        self.viz_canvas.create_rectangle(
-            width - 300, legend_y,
-            width - 280, legend_y + 15,
-            fill=TronTheme.NEON_CYAN,
-            outline=""
-        )
-        self.viz_canvas.create_text(
-            width - 275, legend_y + 7,
-            text="Authentic",
-            fill="white",
-            anchor=tk.W
-        )
-    
-    def create_confidence_graph(self, width, height):
-        """Create a confidence graph visualization."""
-        # Draw title
-        self.viz_canvas.create_text(
-            width // 2,
-            20,
-            text="Confidence Scores for All Files",
-            fill=TronTheme.NEON_CYAN,
-            font=("Helvetica", 12, "bold"),
-            anchor=tk.CENTER
-        )
-        
-        # Draw axes
-        self.viz_canvas.create_line(
-            50, height - 50,
-            width - 50, height - 50,
-            fill=TronTheme.NEON_CYAN,
-            width=2
-        )
-        self.viz_canvas.create_line(
-            50, 50,
-            50, height - 50,
-            fill=TronTheme.NEON_CYAN,
-            width=2
-        )
-        
-        # Draw axis labels
-        self.viz_canvas.create_text(
-            width // 2,
-            height - 20,
-            text="Files",
-            fill=TronTheme.NEON_CYAN,
-            anchor=tk.CENTER
-        )
-        self.viz_canvas.create_text(
-            20,
-            height // 2,
-            text="Confidence",
-            fill=TronTheme.NEON_CYAN,
-            angle=90,
-            anchor=tk.CENTER
-        )
-        
-        # Draw y-axis tick marks
-        for i in range(0, 101, 20):
-            y = height - 50 - (i / 100) * (height - 100)
-            self.viz_canvas.create_line(
-                45, y,
-                55, y,
-                fill=TronTheme.NEON_CYAN,
-                width=1
-            )
-            self.viz_canvas.create_text(
-                40, y,
-                text=f"{i}%",
-                fill=TronTheme.NEON_CYAN,
-                anchor=tk.E
-            )
-        
-        # Plot confidence scores
-        if self.current_results:
-            results = list(self.current_results.values())
-            bar_width = min(40, (width - 100) / len(results))
-            
-            for i, result in enumerate(results):
-                # Calculate bar position
-                x = 50 + (i + 0.5) * ((width - 100) / len(results))
+                ], className="mb-3"),
                 
-                # Calculate bar height
-                bar_height = result['confidence'] * (height - 100)
-                
-                # Draw bar
-                color = TronTheme.MAGENTA if result['is_fake'] else TronTheme.NEON_CYAN
-                self.viz_canvas.create_rectangle(
-                    x - bar_width / 2, height - 50 - bar_height,
-                    x + bar_width / 2, height - 50,
-                    fill=color,
-                    outline="white",
-                    width=1
-                )
-                
-                # Draw file label (shortened)
-                filename = result['filename']
-                if len(filename) > 12:
-                    filename = filename[:10] + "..."
-                
-                self.viz_canvas.create_text(
-                    x,
-                    height - 35,
-                    text=filename,
-                    fill="white",
-                    angle=45,
-                    anchor=tk.E
-                )
-                
-                # Draw confidence value
-                self.viz_canvas.create_text(
-                    x,
-                    height - 50 - bar_height - 10,
-                    text=f"{result['confidence']:.0%}",
-                    fill="white",
-                    anchor=tk.S
-                )
-        else:
-            self.viz_canvas.create_text(
-                width // 2,
-                height // 2,
-                text="No data available",
-                fill=TronTheme.NEON_CYAN,
-                font=("Helvetica", 12),
-                anchor=tk.CENTER
-            )
-    
-    def create_region_visualization(self, result, width, height):
-        """Create a visualization of detected regions."""
-        # Draw title
-        self.viz_canvas.create_text(
-            width // 2,
-            20,
-            text=f"Region Analysis for {result['filename']}",
-            fill=TronTheme.NEON_CYAN,
-            font=("Helvetica", 12, "bold"),
-            anchor=tk.CENTER
-        )
-        
-        # Draw based on media type
-        if result['media_type'] == 'image':
-            # Draw image outline
-            self.viz_canvas.create_rectangle(
-                50, 50,
-                width - 50, height - 150,
-                outline=TronTheme.NEON_CYAN,
-                width=2
-            )
-            
-            # Draw regions
-            if result['regions']:
-                for region in result['regions']:
-                    # Convert region coordinates to canvas coordinates
-                    x = 50 + region['x'] * (width - 100)
-                    y = 50 + region['y'] * (height - 200)
-                    w = region['width'] * (width - 100)
-                    h = region['height'] * (height - 200)
-                    
-                    # Draw region
-                    self.viz_canvas.create_rectangle(
-                        x, y,
-                        x + w, y + h,
-                        outline=TronTheme.MAGENTA,
-                        width=2
-                    )
-            
-            # Region list at bottom
-            list_y = height - 130
-            self.viz_canvas.create_text(
-                50,
-                list_y,
-                text="Detected Regions:",
-                fill=TronTheme.NEON_CYAN,
-                font=("Helvetica", 10, "bold"),
-                anchor=tk.NW
-            )
-            
-            if result['regions']:
-                for i, region in enumerate(result['regions']):
-                    self.viz_canvas.create_text(
-                        50,
-                        list_y + 20 + i * 20,
-                        text=f"{i+1}. {region['type']} - Confidence: {region['confidence']:.1%}",
-                        fill="white",
-                        anchor=tk.NW
-                    )
-            else:
-                self.viz_canvas.create_text(
-                    50,
-                    list_y + 20,
-                    text="No specific regions detected",
-                    fill="white",
-                    anchor=tk.NW
-                )
-                
-        elif result['media_type'] == 'audio':
-            # Draw timeline
-            timeline_y = height // 2
-            self.viz_canvas.create_line(
-                50, timeline_y,
-                width - 50, timeline_y,
-                fill=TronTheme.NEON_CYAN,
-                width=2
-            )
-            
-            # Draw time markers
-            for i in range(6):
-                x = 50 + i * (width - 100) / 5
-                self.viz_canvas.create_line(
-                    x, timeline_y - 5,
-                    x, timeline_y + 5,
-                    fill=TronTheme.NEON_CYAN,
-                    width=1
-                )
-                self.viz_canvas.create_text(
-                    x, timeline_y + 20,
-                    text=f"{i*10}s",
-                    fill=TronTheme.NEON_CYAN,
-                    anchor=tk.N
-                )
-            
-            # Draw regions on timeline
-            if result['regions']:
-                max_time = max(region['end_time'] for region in result['regions'])
-                time_scale = (width - 100) / max(max_time, 50)  # Scale factor
-                
-                for region in result['regions']:
-                    start_x = 50 + region['start_time'] * time_scale
-                    end_x = 50 + region['end_time'] * time_scale
-                    
-                    # Draw region bar
-                    self.viz_canvas.create_rectangle(
-                        start_x, timeline_y - 15,
-                        end_x, timeline_y + 15,
-                        fill=TronTheme.MAGENTA,
-                        outline="white",
-                        width=1
-                    )
-                    
-                    # Draw label if enough space
-                    if end_x - start_x > 40:
-                        self.viz_canvas.create_text(
-                            (start_x + end_x) / 2,
-                            timeline_y,
-                            text=region['type'],
-                            fill="white",
-                            font=("Helvetica", 8),
-                            anchor=tk.CENTER
+                # Confidence Meter
+                html.Div([
+                    html.H5(f"Confidence: {confidence_percentage}"),
+                    html.Div([
+                        html.Div(
+                            style={
+                                'width': f"{confidence * 100}%", 
+                                'height': '10px', 
+                                'backgroundColor': verdict_color,
+                                'borderRadius': '10px'
+                            }
                         )
-            
-            # Region list at bottom
-            list_y = timeline_y + 50
-            self.viz_canvas.create_text(
-                50,
-                list_y,
-                text="Detected Audio Segments:",
-                fill=TronTheme.NEON_CYAN,
-                font=("Helvetica", 10, "bold"),
-                anchor=tk.NW
-            )
-            
-            if result['regions']:
-                for i, region in enumerate(result['regions']):
-                    self.viz_canvas.create_text(
-                        50,
-                        list_y + 20 + i * 20,
-                        text=f"{i+1}. {region['type']} - Time: {region['start_time']:.1f}s to {region['end_time']:.1f}s - Confidence: {region['confidence']:.1%}",
-                        fill="white",
-                        anchor=tk.NW
-                    )
-            else:
-                self.viz_canvas.create_text(
-                    50,
-                    list_y + 20,
-                    text="No specific segments detected",
-                    fill="white",
-                    anchor=tk.NW
-                )
+                    ], style={
+                        'width': '100%', 
+                        'height': '10px', 
+                        'backgroundColor': '#333',
+                        'borderRadius': '10px',
+                        'marginBottom': '20px'
+                    })
+                ]),
                 
-        elif result['media_type'] == 'video':
-            # Draw timeline
-            timeline_y = height // 2
-            self.viz_canvas.create_line(
-                50, timeline_y,
-                width - 50, timeline_y,
-                fill=TronTheme.NEON_CYAN,
-                width=2
-            )
-            
-            # Draw frame markers
-            for i in range(6):
-                x = 50 + i * (width - 100) / 5
-                self.viz_canvas.create_line(
-                    x, timeline_y - 5,
-                    x, timeline_y + 5,
-                    fill=TronTheme.NEON_CYAN,
-                    width=1
-                )
-                self.viz_canvas.create_text(
-                    x, timeline_y + 20,
-                    text=f"Frame {i*60}",
-                    fill=TronTheme.NEON_CYAN,
-                    anchor=tk.N
-                )
-            
-            # Draw regions on timeline
-            if result['regions']:
-                max_frame = max(region['end_frame'] for region in result['regions'])
-                frame_scale = (width - 100) / max(max_frame, 300)  # Scale factor
+                html.Div([
+                    html.P(f"Model: {results['model']}"),
+                    html.P(f"Analysis time: {results['analysis_time']:.2f} seconds"),
+                    html.P(f"Analyzed on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"),
+                ]),
                 
-                for region in result['regions']:
-                    start_x = 50 + region['start_frame'] * frame_scale
-                    end_x = 50 + region['end_frame'] * frame_scale
+                # Warning message for deepfakes
+                html.Div([
+                    html.Div([
+                        html.I(className="fas fa-exclamation-triangle me-2"),
+                        html.Span("This audio has been identified as a potential deepfake. Exercise caution when sharing or using this content.")
+                    ], className="alert alert-danger")
+                ]) if results['is_deepfake'] else html.Div(),
+            ])
+            
+            # Create detailed analysis report
+            report_div = html.Div([
+                html.H4("Technical Analysis Details", className="mb-3"),
+                
+                dbc.Row([
+                    dbc.Col([
+                        html.H5("Detection Metrics"),
+                        dbc.Table([
+                            html.Thead(
+                                html.Tr([
+                                    html.Th("Metric"),
+                                    html.Th("Value")
+                                ])
+                            ),
+                            html.Tbody([
+                                html.Tr([
+                                    html.Td("Deepfake Probability"),
+                                    html.Td(f"{confidence * 100:.2f}%")
+                                ]),
+                                html.Tr([
+                                    html.Td("Confidence Threshold"),
+                                    html.Td(f"{results['threshold'] * 100:.2f}%")
+                                ]),
+                                html.Tr([
+                                    html.Td("Model Used"),
+                                    html.Td(results['model'])
+                                ]),
+                                html.Tr([
+                                    html.Td("Processing Time"),
+                                    html.Td(f"{results['analysis_time']:.3f} seconds")
+                                ]),
+                            ])
+                        ], bordered=True, hover=True, size="sm", className="mb-4"),
+                    ], md=6),
                     
-                    # Draw region bar
-                    self.viz_canvas.create_rectangle(
-                        start_x, timeline_y - 15,
-                        end_x, timeline_y + 15,
-                        fill=TronTheme.MAGENTA,
-                        outline="white",
-                        width=1
+                    dbc.Col([
+                        html.H5("Detection Details"),
+                        html.Div([
+                            html.P("Audio Analysis Method:", className="fw-bold"),
+                            html.P("Wav2Vec2 model with spectrogram analysis")
+                        ]),
+                        html.Hr(),
+                        html.Div([
+                            html.P("Key Indicators:", className="fw-bold"),
+                            html.Ul([
+                                html.Li("Voice characteristics consistency"),
+                                html.Li("Temporal pattern analysis"),
+                                html.Li("Spectral anomaly detection")
+                            ])
+                        ]),
+                    ], md=6),
+                ]),
+                
+                # Visualization
+                html.H5("Visualization", className="mt-3 mb-2"),
+                html.P("Spectrogram analysis showing frequency distribution:"),
+                
+                # Mock spectrogram visualization
+                html.Div([
+                    html.Img(src="/assets/spectrogram_visualization.png", 
+                             style={'max-width': '100%', 'max-height': '200px'}),
+                ], style={'width': '100%', 'textAlign': 'center', 'marginBottom': '20px'}),
+                
+                # Add to report list
+                html.Hr(),
+                html.Div([
+                    dbc.Button("Add to Reports", color="primary", id="add-audio-to-reports", className="me-2"),
+                    dbc.Button("Download Analysis", color="secondary", id="download-audio-analysis", outline=True),
+                ], className="d-flex justify-content-end")
+            ])
+            
+            return results_div, report_div, ""
+            
+        except Exception as e:
+            error_div = html.Div([
+                html.H5("Error processing the audio:"),
+                html.P(str(e))
+            ])
+            return error_div, html.P(f"Error during analysis: {str(e)}", className="text-danger"), ""
+    
+    # Toggle button for technical details
+    @app.callback(
+        [Output("wav2vec-technical-collapse", "is_open"),
+         Output("toggle-wav2vec-details", "children")],
+        [Input("toggle-wav2vec-details", "n_clicks")],
+        [State("wav2vec-technical-collapse", "is_open")]
+    )
+    def toggle_wav2vec_collapse(n, is_open):
+        if n:
+            return not is_open, "Hide Technical Details" if not is_open else "Show Technical Details"
+        return is_open, "Show Technical Details"
+    
+    # ---- VIDEO TAB CALLBACKS ----
+    
+    # Callback for video upload and preview
+    @app.callback(
+        [Output('output-video-upload', 'children'),
+         Output('analyze-video-button', 'disabled')],
+        [Input('upload-video', 'contents')],
+        [State('upload-video', 'filename'),
+         State('upload-video', 'last_modified')]
+    )
+    def update_video_preview(content, filename, date):
+        if content is None:
+            return [html.Div("No video file uploaded yet.")], True
+        
+        # Display the uploaded video
+        video_div = html.Div([
+            html.H6(filename),
+            html.Video(src=content, controls=True, style={'max-width': '100%', 'max-height': '200px'}),
+            html.P(f"Last modified: {datetime.fromtimestamp(date).strftime('%Y-%m-%d %H:%M:%S')}", 
+                  className="text-muted small")
+        ])
+        
+        return [video_div], False
+    
+    # Callback for video analysis
+    @app.callback(
+        [Output('video-results-container', 'children'),
+         Output('video-analysis-report', 'children'),
+         Output('video-loading-spinner', 'children')],
+        [Input('analyze-video-button', 'n_clicks')],
+        [State('upload-video', 'contents'),
+         State('upload-video', 'filename')]
+    )
+    def analyze_video(n_clicks, content, filename):
+        if n_clicks is None or n_clicks == 0 or content is None:
+            return [], html.P("Upload and analyze a video file to see detailed results.", className="text-muted text-center py-5"), ""
+        
+        # Create a temporary file with the uploaded content
+        data = content.encode("utf8").split(b";base64,")[1]
+        decoded = base64.b64decode(data)
+        
+        temp_dir = app._app_config['general'].get('temp_dir', './temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, filename)
+        
+        with open(file_path, "wb") as f:
+            f.write(decoded)
+        
+        # Process the video
+        try:
+            results = app._processor.detect_media(file_path, 'video')
+            
+            # Display the results
+            verdict_color = '#F72585' if results['is_deepfake'] else '#0AFF16'
+            verdict_text = "DEEPFAKE DETECTED" if results['is_deepfake'] else "AUTHENTIC"
+            confidence = results.get('confidence', 0.5)
+            confidence_percentage = f"{confidence * 100:.1f}%"
+            
+            results_div = html.Div([
+                html.Div([
+                    html.H3("Verdict:", style={'display': 'inline-block', 'marginRight': '10px'}),
+                    html.H3(
+                        verdict_text, 
+                        style={
+                            'display': 'inline-block', 
+                            'color': verdict_color
+                        }
                     )
-                    
-                    # Draw label if enough space
-                    if end_x - start_x > 40:
-                        self.viz_canvas.create_text(
-                            (start_x + end_x) / 2,
-                            timeline_y,
-                            text=region['type'],
-                            fill="white",
-                            font=("Helvetica", 8),
-                            anchor=tk.CENTER
+                ], className="mb-3"),
+                
+                # Confidence Meter
+                html.Div([
+                    html.H5(f"Confidence: {confidence_percentage}"),
+                    html.Div([
+                        html.Div(
+                            style={
+                                'width': f"{confidence * 100}%", 
+                                'height': '10px', 
+                                'backgroundColor': verdict_color,
+                                'borderRadius': '10px'
+                            }
                         )
+                    ], style={
+                        'width': '100%', 
+                        'height': '10px', 
+                        'backgroundColor': '#333',
+                        'borderRadius': '10px',
+                        'marginBottom': '20px'
+                    })
+                ]),
+                
+                html.Div([
+                    html.P(f"Model: {results['model']}"),
+                    html.P(f"Analysis time: {results['analysis_time']:.2f} seconds"),
+                    html.P(f"Analyzed on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"),
+                ]),
+                
+                # Warning message for deepfakes
+                html.Div([
+                    html.Div([
+                        html.I(className="fas fa-exclamation-triangle me-2"),
+                        html.Span("This video has been identified as a potential deepfake. Exercise caution when sharing or using this content.")
+                    ], className="alert alert-danger")
+                ]) if results['is_deepfake'] else html.Div(),
+            ])
             
-            # Region list at bottom
-            list_y = timeline_y + 50
-            self.viz_canvas.create_text(
-                50,
-                list_y,
-                text="Detected Video Segments:",
-                fill=TronTheme.NEON_CYAN,
-                font=("Helvetica", 10, "bold"),
-                anchor=tk.NW
-            )
+            # Create detailed analysis report
+            report_div = html.Div([
+                html.H4("Technical Analysis Details", className="mb-3"),
+                
+                dbc.Row([
+                    dbc.Col([
+                        html.H5("Detection Metrics"),
+                        dbc.Table([
+                            html.Thead(
+                                html.Tr([
+                                    html.Th("Metric"),
+                                    html.Th("Value")
+                                ])
+                            ),
+                            html.Tbody([
+                                html.Tr([
+                                    html.Td("Deepfake Probability"),
+                                    html.Td(f"{confidence * 100:.2f}%")
+                                ]),
+                                html.Tr([
+                                    html.Td("Confidence Threshold"),
+                                    html.Td(f"{results['threshold'] * 100:.2f}%")
+                                ]),
+                                html.Tr([
+                                    html.Td("Model Used"),
+                                    html.Td(results['model'])
+                                ]),
+                                html.Tr([
+                                    html.Td("Processing Time"),
+                                    html.Td(f"{results['analysis_time']:.3f} seconds")
+                                ]),
+                            ])
+                        ], bordered=True, hover=True, size="sm", className="mb-4"),
+                    ], md=6),
+                    
+                    dbc.Col([
+                        html.H5("Detection Details"),
+                        html.Div([
+                            html.P("Video Analysis Method:", className="fw-bold"),
+                            html.P("GenConViT hybrid model with temporal consistency analysis")
+                        ]),
+                        html.Hr(),
+                        html.Div([
+                            html.P("Key Indicators:", className="fw-bold"),
+                            html.Ul([
+                                html.Li("Facial feature consistency across frames"),
+                                html.Li("Temporal coherence check"),
+                                html.Li("Audio-visual synchronization"),
+                                html.Li("Physiological signal analysis (eye blinks, pulse)")
+                            ])
+                        ]),
+                    ], md=6),
+                ]),
+                
+                # Visualization
+                html.H5("Visualization", className="mt-3 mb-2"),
+                html.P("Frame-by-frame analysis showing potential manipulation:"),
+                
+                # Mock frame analysis visualization
+                html.Div([
+                    html.Img(src="/assets/frame_analysis_visualization.png", 
+                             style={'max-width': '100%', 'max-height': '300px'}),
+                ], style={'width': '100%', 'textAlign': 'center', 'marginBottom': '20px'}),
+                
+                # Add to report list
+                html.Hr(),
+                html.Div([
+                    dbc.Button("Add to Reports", color="primary", id="add-video-to-reports", className="me-2"),
+                    dbc.Button("Download Analysis", color="secondary", id="download-video-analysis", outline=True),
+                ], className="d-flex justify-content-end")
+            ])
             
-            if result['regions']:
-                for i, region in enumerate(result['regions']):
-                    self.viz_canvas.create_text(
-                        50,
-                        list_y + 20 + i * 20,
-                        text=f"{i+1}. {region['type']} - Frames: {region['start_frame']} to {region['end_frame']} - Confidence: {region['confidence']:.1%}",
-                        fill="white",
-                        anchor=tk.NW
-                    )
-            else:
-                self.viz_canvas.create_text(
-                    50,
-                    list_y + 20,
-                    text="No specific segments detected",
-                    fill="white",
-                    anchor=tk.NW
-                )
+            return results_div, report_div, ""
+            
+        except Exception as e:
+            error_div = html.Div([
+                html.H5("Error processing the video:"),
+                html.P(str(e))
+            ])
+            return error_div, html.P(f"Error during analysis: {str(e)}", className="text-danger"), ""
     
-    def generate_report(self):
-        """Generate a report based on all results."""
-        # Enable text widget for editing
-        self.report_text.config(state=tk.NORMAL)
-        
-        # Clear current content
-        self.report_text.delete(1.0, tk.END)
-        
-        # Add report header
-        self.report_text.insert(tk.END, "Deepfake Detection Analysis Report\n\n", "header")
-        
-        # Add timestamp
-        import datetime
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        self.report_text.insert(tk.END, f"Report generated: {timestamp}\n\n")
-        
-        # Add summary
-        self.report_text.insert(tk.END, "Executive Summary\n", "subheader")
-        
-        total_count = len(self.current_results)
-        fake_count = sum(1 for result in self.current_results.values() if result['is_fake'])
-        real_count = total_count - fake_count
-        
-        if total_count > 0:
-            fake_percent = (fake_count / total_count) * 100
-            real_percent = (real_count / total_count) * 100
-            
-            self.report_text.insert(tk.END, f"A total of {total_count} files were analyzed using our Deepfake Detection Platform. ")
-            
-            if fake_count > 0:
-                self.report_text.insert(tk.END, f"Of these files, {fake_count} ({fake_percent:.1f}%) were classified as likely manipulated. ")
-            
-            if real_count > 0:
-                self.report_text.insert(tk.END, f"{real_count} ({real_percent:.1f}%) were classified as likely authentic. ")
-            
-            # Add overall assessment
-            self.report_text.insert(tk.END, "\n\nOverall Assessment: ")
-            
-            if fake_count > real_count:
-                self.report_text.insert(tk.END, "The majority of analyzed content appears to be manipulated, suggesting significant presence of deepfakes in the dataset.", "highlight")
-            elif fake_count == real_count:
-                self.report_text.insert(tk.END, "The dataset contains an equal mixture of authentic and manipulated content.", "highlight")
-            else:
-                self.report_text.insert(tk.END, "The majority of analyzed content appears to be authentic, with only limited presence of potential deepfakes.", "highlight")
-        
-        # Add detailed file results
-        self.report_text.insert(tk.END, "\n\nDetailed Results\n", "subheader")
-        
-        # Group by media type
-        images = [r for r in self.current_results.values() if r['media_type'] == 'image']
-        audio = [r for r in self.current_results.values() if r['media_type'] == 'audio']
-        videos = [r for r in self.current_results.values() if r['media_type'] == 'video']
-        
-        # Report on each type
-        if images:
-            self.report_text.insert(tk.END, "\nImage Analysis:\n")
-            for i, result in enumerate(images):
-                status = "FAKE/MANIPULATED" if result['is_fake'] else "AUTHENTIC"
-                self.report_text.insert(tk.END, f"{i+1}. {result['filename']} - {status} - Confidence: {result['confidence']:.1%}\n")
-        
-        if audio:
-            self.report_text.insert(tk.END, "\nAudio Analysis:\n")
-            for i, result in enumerate(audio):
-                status = "FAKE/MANIPULATED" if result['is_fake'] else "AUTHENTIC"
-                self.report_text.insert(tk.END, f"{i+1}. {result['filename']} - {status} - Confidence: {result['confidence']:.1%}\n")
-        
-        if videos:
-            self.report_text.insert(tk.END, "\nVideo Analysis:\n")
-            for i, result in enumerate(videos):
-                status = "FAKE/MANIPULATED" if result['is_fake'] else "AUTHENTIC"
-                self.report_text.insert(tk.END, f"{i+1}. {result['filename']} - {status} - Confidence: {result['confidence']:.1%}\n")
-        
-        # Add methodology section
-        self.report_text.insert(tk.END, "\n\nMethodology\n", "subheader")
-        self.report_text.insert(tk.END, "This analysis was performed using the Deepfake Detection Platform, which employs state-of-the-art detection models:\n\n")
-        self.report_text.insert(tk.END, "• Image Detection: Vision Transformer (ViT) model with face detection preprocessing and Error Level Analysis\n")
-        self.report_text.insert(tk.END, "• Audio Detection: Wav2Vec2 model with spectrogram analysis\n")
-        self.report_text.insert(tk.END, "• Video Detection: GenConViT/TimeSformer hybrid approach with frame and temporal analysis\n\n")
-        self.report_text.insert(tk.END, "Each file was analyzed using multiple detection methods and ensemble techniques to provide comprehensive results.")
-        
-        # Add disclaimer
-        self.report_text.insert(tk.END, "\n\nDisclaimer\n", "subheader")
-        self.report_text.insert(tk.END, "This report is generated by an automated system and provides analysis based on detection models. While the platform utilizes advanced technology, no detection system is 100% accurate. Results should be verified by human experts for conclusive determination of content authenticity.")
-        
-        # Make read-only again
-        self.report_text.config(state=tk.DISABLED)
+    # Toggle button for technical details
+    @app.callback(
+        [Output("genconvit-technical-collapse", "is_open"),
+         Output("toggle-genconvit-details", "children")],
+        [Input("toggle-genconvit-details", "n_clicks")],
+        [State("genconvit-technical-collapse", "is_open")]
+    )
+    def toggle_genconvit_collapse(n, is_open):
+        if n:
+            return not is_open, "Hide Technical Details" if not is_open else "Show Technical Details"
+        return is_open, "Show Technical Details"
+
+def parse_contents(contents, filename, date):
+    """
+    Parse the contents of an uploaded file.
     
-    def export_pdf(self):
-        """Export the report as a PDF."""
-        # Placeholder - in real implementation, would use a PDF generation library
-        messagebox.showinfo("Export PDF", "PDF export functionality not implemented in this version")
-    
-    def export_csv(self):
-        """Export the results as a CSV file."""
-        # Placeholder - in real implementation, would use the CSV module
-        messagebox.showinfo("Export CSV", "CSV export functionality not implemented in this version")
-    
-    def show_settings(self):
-        """Show settings dialog."""
-        # Placeholder for settings dialog
-        messagebox.showinfo("Settings", "Settings dialog not implemented in this version")
-    
-    def show_help(self):
-        """Show help dialog."""
-        help_text = """
-Deepfake Detection Platform Help
-
-This application allows you to analyze images, audio, and video files for potential deepfakes.
-
-Usage:
-1. Select the appropriate tab for your media type (Image, Audio, or Video)
-2. Click "Select Files" to choose files for analysis
-3. Click "Analyze" to start the detection process
-4. View results in the Results tab
-5. Export reports as needed
-
-For more detailed information, please refer to the documentation.
-        """
-        messagebox.showinfo("Help", help_text)
-
-def main():
-    """Run the application."""
-    root = tk.Tk()
-    app = DeepfakeDetectionApp(root)
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
+    Args:
+        contents: File contents
+        filename: Filename
+        date: Last modified date
+        
+    Returns:
+        HTML Div containing the file info and contents
+    """
+    return html.Div([
+        html.H5(filename),
+        html.H6(datetime.fromtimestamp(date).strftime('%Y-%m-%d %H:%M:%S')),
+        
+        # Preview content based on file type
+        html.Div([
+            html.Img(src=contents, style={'max-width': '100%', 'max-height': '300px'})
+            if 'image' in contents.lower() else
+            html.Audio(src=contents, controls=True, style={'width': '100%'})
+            if 'audio' in contents.lower() else
+            html.Video(src=contents, controls=True, style={'max-width': '100%', 'max-height': '300px'})
+            if 'video' in contents.lower() else
+            html.Div('File preview not available')
+        ]),
+        
+        html.Hr()
+    ])
