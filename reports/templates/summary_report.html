@@ -298,7 +298,7 @@
                 <h2>{{ verdict|upper }}</h2>
                 <p>Confidence Score:</p>
                 <div class="confidence-meter">
-                    <div class="confidence-fill" style="width: {{ confidence }}%;">
+                    <div class="confidence-fill" data-confidence="{{ confidence }}">
                         <span class="confidence-value">{{ confidence }}%</span>
                     </div>
                 </div>
@@ -387,5 +387,15 @@
             {% endif %}
         </footer>
     </div>
+    <script>
+        // Apply width to confidence meter bars
+        document.addEventListener('DOMContentLoaded', function() {
+            const confidenceFills = document.querySelectorAll('.confidence-fill');
+            confidenceFills.forEach(function(fill) {
+                const confidence = fill.getAttribute('data-confidence');
+                fill.style.width = confidence + '%';
+            });
+        });
+    </script>
 </body>
 </html>
