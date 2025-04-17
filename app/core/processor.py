@@ -6,6 +6,7 @@ import time
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 import threading
+import hashlib
 
 class MediaProcessor:
     """
@@ -77,13 +78,14 @@ class MediaProcessor:
         
         self.logger.info("All detector models loaded successfully")
     
-    def detect_media(self, media_path: str, media_type: str = None) -> Dict[str, Any]:
+    def detect_media(self, media_path: str, media_type: str = None, model_params: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Detect if the given media is a deepfake.
         
         Args:
             media_path: Path to the media file
             media_type: Type of media (image, audio, video) or None for auto-detection
+            model_params: Optional parameters for the model (model_name, confidence_threshold, etc.)
             
         Returns:
             Detection results dictionary
@@ -91,10 +93,17 @@ class MediaProcessor:
         Raises:
             ValueError: If media_type is not valid or media cannot be processed
         """
-        # Check if we already have results for this file
-        if media_path in self.results_cache:
-            self.logger.info(f"Using cached results for {media_path}")
-            return self.results_cache[media_path]
+        # If no model params are provided, use an empty dict
+        if model_params is None:
+            model_params = {}
+            
+        # Create a cache key that includes model parameters
+        cache_key = f"{media_path}_{hashlib.sha256(str(model_params).encode()).hexdigest()}"
+        
+        # Check if we already have results for this file with these parameters
+        if cache_key in self.results_cache:
+            self.logger.info(f"Using cached results for {media_path} with specified parameters")
+            return self.results_cache[cache_key]
         
         # If media_type is not provided, attempt to detect it
         if media_type is None:
@@ -113,14 +122,32 @@ class MediaProcessor:
         
         try:
             detector = self.detectors[media_type]
+            
+            # Configure the detector with the provided parameters if applicable
+            if model_params:
+                # Update model name if provided
+                if "model_name" in model_params:
+                    detector.model_name = model_params["model_name"]
+                    # Reset model to force reload with new model name
+                    detector.model = None
+                
+                # Update confidence threshold if provided
+                if "confidence_threshold" in model_params:
+                    detector.confidence_threshold = model_params["confidence_threshold"]
+                    
+                self.logger.info(f"Using model: {detector.model_name} with threshold: {detector.confidence_threshold}")
+            
+            # Detect the media
             result = detector.detect(media_path)
             
-            # Add processing time to results
+            # Add processing time and model info to results
             processing_time = time.time() - start_time
             result['analysis_time'] = processing_time
+            result['model'] = detector.model_name
+            result['threshold'] = detector.confidence_threshold
             
             # Cache the results
-            self._cache_result(media_path, result)
+            self._cache_result(cache_key, result)
             
             self.logger.info(f"Processed {media_path} in {processing_time:.2f}s")
             return result
@@ -159,17 +186,11 @@ class MediaProcessor:
         else:
             raise ValueError(f"Unsupported file type: {ext}")
     
-    def _cache_result(self, media_path: str, result: Dict[str, Any]):
-        """
-        Cache the detection result for future use.
-        
-        Args:
-            media_path: Path to the media file
-            result: Detection result dictionary
-        """
+    def _cache_result(self, key: str, result: Dict[str, Any]):
+        """Cache the detection result."""
         with self.lock:
             # Add to cache
-            self.results_cache[media_path] = result
+            self.results_cache[key] = result
             
             # If cache exceeds max size, remove oldest entries
             if len(self.results_cache) > self.max_cache_size:

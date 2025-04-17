@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="70" viewBox="0 0 300 70">
+  <style>
+    text {
+      font-family: 'Times New Roman', serif;
+      fill: #E0F7FF;
+    }
+    .formula {
+      font-size: 20px;
+      font-style: italic;
+    }
+    .fraction-line {
+      stroke: #E0F7FF;
+      stroke-width: 1.5;
+    }
+  </style>
+  <text x="110" y="30" class="formula">FRR = </text>
+  <text x="165" y="20" class="formula">False Rejections</text>
+  <line x1="165" y1="35" x2="290" y2="35" class="fraction-line" />
+  <text x="170" y="55" class="formula">Total Genuine Attempts</text>
+</svg>

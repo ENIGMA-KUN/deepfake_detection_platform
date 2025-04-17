@@ -48,3 +48,5 @@ ENV/
 
 # Test data
 /tests/test_data/generated/
+tests\test_data\Fake_Video
+tests\test_data\Real_Video
