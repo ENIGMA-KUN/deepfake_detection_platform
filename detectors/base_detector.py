@@ -23,6 +23,7 @@ class BaseDetector(ABC):
         self.confidence_threshold = confidence_threshold
         self.model = None
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
+        self.name = self.__class__.__name__  # Add name attribute for ensemble detector
         
     @abstractmethod
     def detect(self, media_path: str) -> Dict[str, Any]:
@@ -99,3 +100,29 @@ class BaseDetector(ABC):
         if not os.path.exists(media_path):
             raise FileNotFoundError(f"Media file not found: {media_path}")
         return True
+    
+    def predict(self, media_path: str) -> Dict[str, Any]:
+        """
+        Alias for detect method to maintain compatibility with ensemble detector.
+        
+        Args:
+            media_path: Path to the media file to analyze
+            
+        Returns:
+            Dictionary containing detection results
+        """
+        return self.detect(media_path)
+    
+    def get_confidence(self, result: Dict[str, Any]) -> float:
+        """
+        Extract confidence score from detection result.
+        
+        Args:
+            result: Detection result dictionary
+            
+        Returns:
+            Confidence score between 0 and 1
+        """
+        if isinstance(result, dict) and 'confidence' in result:
+            return result['confidence']
+        return 0.0

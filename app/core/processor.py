@@ -105,36 +105,116 @@ class MediaProcessor:
             self.logger.info(f"Using cached results for {media_path} with specified parameters")
             return self.results_cache[cache_key]
         
-        # If media_type is not provided, attempt to detect it
+        # Auto-detect media type if not specified
         if media_type is None:
             media_type = self._detect_media_type(media_path)
+            self.logger.info(f"Auto-detected media type: {media_type}")
         
+        # Load detectors if they haven't been loaded yet
+        if not self.detectors:
+            self.logger.info("Detectors not loaded, loading now...")
+            self.load_detectors()
+            
+        # Validate media_type after ensuring detectors are loaded
         if media_type not in self.detectors:
             raise ValueError(f"Unsupported media type: {media_type}")
-        
-        # Check if detector models are loaded
-        if not self.detectors:
-            self.load_detectors()
         
         # Process the media with the appropriate detector
         self.logger.info(f"Processing {media_type} file: {media_path}")
         start_time = time.time()
         
         try:
-            detector = self.detectors[media_type]
+            # Check if we need to use an ensemble detector
+            using_ensemble = False
+            model_name = model_params.get("model_name", None)
+            confidence_threshold = model_params.get("confidence_threshold", 0.5)
             
-            # Configure the detector with the provided parameters if applicable
-            if model_params:
-                # Update model name if provided
-                if "model_name" in model_params:
-                    detector.model_name = model_params["model_name"]
-                    # Reset model to force reload with new model name
-                    detector.model = None
+            if model_name and model_name.lower() == "ensemble":
+                self.logger.info(f"Using ensemble detector for {media_type} analysis")
+                using_ensemble = True
                 
-                # Update confidence threshold if provided
-                if "confidence_threshold" in model_params:
-                    detector.confidence_threshold = model_params["confidence_threshold"]
+                # Import the appropriate ensemble detector based on media type
+                if media_type == "image":
+                    from detectors.image_detector.ensemble import ImageEnsembleDetector
+                    from detectors.image_detector.vit_detector import ViTImageDetector
+                    from detectors.image_detector.deit_detector import DeiTImageDetector
+                    from detectors.image_detector.beit_detector import BEITImageDetector
+                    from detectors.image_detector.swin_detector import SwinImageDetector
                     
+                    # Create individual detector instances
+                    self.logger.info("Creating image ensemble with multiple detectors")
+                    vit_detector = ViTImageDetector(model_name="google/vit-base-patch16-224", confidence_threshold=confidence_threshold)
+                    deit_detector = DeiTImageDetector(model_name="facebook/deit-base-distilled-patch16-224", confidence_threshold=confidence_threshold)
+                    beit_detector = BEITImageDetector(model_name="microsoft/beit-base-patch16-224", confidence_threshold=confidence_threshold)
+                    swin_detector = SwinImageDetector(model_name="microsoft/swin-base-patch4-window7-224", confidence_threshold=confidence_threshold)
+                    
+                    # Create and use the ensemble detector
+                    detector = ImageEnsembleDetector(
+                        detectors=[vit_detector, deit_detector, beit_detector, swin_detector],
+                        threshold=confidence_threshold,
+                        enable_singularity=True
+                    )
+                    
+                elif media_type == "audio":
+                    from detectors.audio_detector.ensemble import AudioEnsembleDetector
+                    from detectors.audio_detector.wav2vec_detector import Wav2VecAudioDetector
+                    from detectors.audio_detector.xlsr_detector import XLSRAudioDetector
+                    
+                    # Create individual detector instances
+                    self.logger.info("Creating audio ensemble with multiple detectors")
+                    wav2vec_detector = Wav2VecAudioDetector(model_name="facebook/wav2vec2-large-960h", confidence_threshold=confidence_threshold)
+                    xlsr_detector = XLSRAudioDetector(model_name="facebook/wav2vec2-large-xlsr-53", confidence_threshold=confidence_threshold)
+                    
+                    # Create and use the ensemble detector
+                    detector = AudioEnsembleDetector(
+                        detectors=[wav2vec_detector, xlsr_detector],
+                        threshold=confidence_threshold,
+                        enable_singularity=True
+                    )
+                    
+                elif media_type == "video":
+                    from detectors.video_detector.ensemble import VideoEnsembleDetector
+                    from detectors.video_detector.genconvit import GenConViTVideoDetector
+                    from detectors.video_detector.timesformer import TimeSformerVideoDetector
+                    from detectors.video_detector.video_swin import VideoSwinDetector
+                    
+                    # Create individual detector instances
+                    self.logger.info("Creating video ensemble with multiple detectors")
+                    genconvit_detector = GenConViTVideoDetector(
+                        frame_model_name="google/vit-base-patch16-224", 
+                        confidence_threshold=confidence_threshold
+                    )
+                    timesformer_detector = TimeSformerVideoDetector(
+                        model_name="facebook/timesformer-base-finetuned-k400",
+                        confidence_threshold=confidence_threshold
+                    )
+                    video_swin_detector = VideoSwinDetector(
+                        model_name="microsoft/swin-base-patch4-window7-224",
+                        confidence_threshold=confidence_threshold
+                    )
+                    
+                    # Create and use the ensemble detector
+                    detector = VideoEnsembleDetector(
+                        detectors=[genconvit_detector, timesformer_detector, video_swin_detector],
+                        threshold=confidence_threshold,
+                        enable_singularity=True
+                    )
+            else:
+                # Use the regular detector for this media type
+                detector = self.detectors[media_type]
+                
+                # Configure the detector with the provided parameters if applicable
+                if model_params:
+                    # Update model name if provided
+                    if "model_name" in model_params:
+                        detector.model_name = model_params["model_name"]
+                        # Reset model to force reload with new model name
+                        detector.model = None
+                    
+                    # Update confidence threshold if provided
+                    if "confidence_threshold" in model_params:
+                        detector.confidence_threshold = model_params["confidence_threshold"]
+                
                 self.logger.info(f"Using model: {detector.model_name} with threshold: {detector.confidence_threshold}")
             
             # Detect the media
@@ -143,8 +223,26 @@ class MediaProcessor:
             # Add processing time and model info to results
             processing_time = time.time() - start_time
             result['analysis_time'] = processing_time
-            result['model'] = detector.model_name
-            result['threshold'] = detector.confidence_threshold
+            
+            # Set model name based on whether this is an ensemble or single model
+            if using_ensemble:
+                result['model'] = "ensemble"
+                result['ensemble'] = True
+                result['model_count'] = len(detector.detectors) if hasattr(detector, 'detectors') else 0
+            else:
+                result['model'] = detector.model_name
+                result['ensemble'] = False
+                
+            result['threshold'] = confidence_threshold
+            
+            # Backward-compatibility: add 'is_deepfake' boolean expected by UI
+            if 'prediction' in result:
+                result['is_deepfake'] = (result['prediction'].upper() == 'DEEPFAKE')
+            elif 'confidence' in result:
+                result['is_deepfake'] = (result.get('confidence', 0.0) >= confidence_threshold)
+            else:
+                # Fallback – assume authentic
+                result['is_deepfake'] = False
             
             # Cache the results
             self._cache_result(cache_key, result)

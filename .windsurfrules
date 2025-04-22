@@ -4,6 +4,43 @@
 
 This is a Deepfake Detection Platform that analyzes images, audio, and video for authenticity using deep learning models. The platform features a Tron Legacy-themed UI with media-specific tabs and detailed visualizations.
 
+## Task Tracking Requirements
+
+1. ALWAYS update `memory/task_tracker.json` IMMEDIATELY after completing any task
+2. MARK tasks as "done" using the following format:
+```json
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Create Base Ensemble Framework",
+      "status": "done",
+      "completed_files": ["detectors/ensemble_detector.py"]
+    }
+  ]
+}
+```
+3. UPDATE `memory/project_state.json` with details of ALL new files implemented:
+```json
+{
+  "last_updated": "2025-04-17T15:30:00",
+  "implemented_files": [
+    {
+      "path": "detectors/ensemble_detector.py",
+      "classes": ["EnsembleDetector"],
+      "functions": ["predict", "calibrate_weights", "adaptive_weighting"],
+      "imports": ["numpy", "typing"],
+      "dependents": ["detectors/image_detector/ensemble.py"]
+    }
+  ]
+}
+```
+4. INCLUDE full implementation details in `memory/implementations/[filepath].md`
+5. VERIFY all task dependencies before starting a new task
+6. ONLY mark a task as "done" when ALL required files are fully implemented
+7. MAINTAIN strict consistency between task_tracker.json and project_state.json
+8. REFERENCE task ID when implementing related files
+
 ## Project Structure Rules
 
 ```
@@ -23,7 +60,8 @@ deepfake-detection/
 │   │   ├── __init__.py
 │   │   ├── processor.py
 │   │   ├── queue_manager.py
-│   │   └── result_handler.py
+│   │   ├── result_handler.py
+│   │   └── singularity_manager.py
 │   └── utils/
 │       ├── __init__.py
 │       ├── file_handler.py
@@ -32,18 +70,32 @@ deepfake-detection/
 ├── detectors/
 │   ├── __init__.py
 │   ├── base_detector.py
+│   ├── ensemble_detector.py
 │   ├── image_detector/
 │   │   ├── __init__.py
 │   │   ├── vit_detector.py
+│   │   ├── beit_detector.py
+│   │   ├── deit_detector.py
+│   │   ├── swin_detector.py
+│   │   ├── face_detector.py
 │   │   └── ensemble.py
 │   ├── audio_detector/
 │   │   ├── __init__.py
 │   │   ├── wav2vec_detector.py
-│   │   └── spectrogram_analyzer.py
+│   │   ├── xlsr_detector.py
+│   │   ├── mamba_detector.py
+│   │   ├── tcn_detector.py
+│   │   ├── spectrogram_analyzer.py
+│   │   └── ensemble.py
 │   └── video_detector/
 │       ├── __init__.py
 │       ├── genconvit.py
-│       └── frame_analyzer.py
+│       ├── timesformer.py
+│       ├── slowfast.py
+│       ├── video_swin.py
+│       ├── x3d.py
+│       ├── frame_analyzer.py
+│       └── ensemble.py
 ├── models/
 │   ├── __init__.py
 │   ├── model_loader.py
@@ -75,7 +127,6 @@ deepfake-detection/
     ├── detector_details.md
     └── model_descriptions.md
 ```
-Update project strcutre when u add new file in Memory
 
 ## State Tracking
 
@@ -152,24 +203,55 @@ except SpecificError as e:
   - `normalize_confidence(self, raw_score: float) -> float`
   - `format_result(self, is_deepfake: bool, confidence: float, metadata: Dict) -> Dict[str, Any]`
 
-### Image Detector (detectors/image_detector/vit_detector.py)
-- Must use Vision Transformer (ViT) model: "google/vit-base-patch16-224"
-- Implement patch embedding, transformer encoder, and classification head
-- Include face detection preprocessing
-- Add support for region-specific analysis with heatmaps
+### Ensemble Detector (detectors/ensemble_detector.py)
+- Must implement the weighted ensemble approach
+- Include adaptive weighting based on content characteristics
+- Support calibration of weights based on validation data
+- Provide base functionality for all media-specific ensemble detectors
 
-### Audio Detector (detectors/audio_detector/wav2vec_detector.py)
-- Must use Wav2Vec2 model: "facebook/wav2vec2-large-960h"
-- Process raw waveform through transformer encoder
-- Implement spectrogram analysis as complementary approach
-- Detect temporal inconsistencies in audio
+### Image Detector (detectors/image_detector/)
+- Implement detectors for all models: ViT, BEIT, DeiT, Swin Transformer
+- Include face detection and tracking with bounding boxes
+- Implement Visual Sentinel Singularity Mode
+- Support heatmap visualization of manipulated regions
 
-### Video Detector (detectors/video_detector/genconvit.py)
-- Implement GenConViT/TimeSformer hybrid approach
-- Perform frame-level analysis
-- Add temporal analysis across frames
-- Include audio-video sync analysis
-- Generate visualization of temporal inconsistencies
+### Audio Detector (detectors/audio_detector/)
+- Implement detectors for all models: Wav2Vec2, XLSR+SLS, XLSR-Mamba, TCN-Add
+- Include spectrogram analysis and frequency band detection
+- Implement Acoustic Guardian Singularity Mode
+- Support anomaly region detection
+
+### Video Detector (detectors/video_detector/)
+- Implement detectors for all models: GenConViT, TimeSformer, SlowFast, Video Swin, X3D
+- Perform frame-level, temporal, and audio-visual analysis
+- Implement Temporal Oracle Singularity Mode
+- Support timeline visualization and manipulation type detection
+
+## Singularity Mode Implementation
+
+### Core Components (app/core/singularity_manager.py)
+- Implement SingularityManager class to manage all Singularity Modes
+- Include base SingularityMode class and media-specific implementations
+- Support adaptive weighting and enhanced visualization
+- Provide unified interface for applying Singularity Modes to detection results
+
+### Image: Visual Sentinel
+- Dynamic weighted ensemble of all image models
+- Content-adaptive weighting based on image characteristics
+- Enhanced heatmap visualization with region-specific confidence
+- 97.9% accuracy through combined analysis
+
+### Audio: Acoustic Guardian
+- Sophisticated weighted ensemble of all audio models
+- Frequency band analysis and temporal pattern detection
+- Enhanced spectrogram visualization with highlighted anomaly regions
+- 96.2% accuracy through combined spectral analysis
+
+### Video: Temporal Oracle
+- Multi-modal fusion of video, image, and audio analysis
+- Temporal consistency verification and manipulation type detection
+- Enhanced timeline visualization with frame-by-frame confidence
+- 97.3% accuracy through comprehensive multi-signal analysis
 
 ## UI Implementation
 
@@ -194,6 +276,8 @@ except SpecificError as e:
 - Dynamic gradient backgrounds
 - Retro-futuristic typography (headers: Orbitron, Audiowide; body: Roboto, Open Sans)
 - Tron-inspired visualization components
+- Singularity Mode selection interface
+- Enhanced visualization for each Singularity Mode
 
 ## Dependency Management
 
@@ -215,24 +299,33 @@ gradio==3.35.2
 
 ### Model Dependencies
 - Vision Transformer: "google/vit-base-patch16-224"
+- BEIT: "microsoft/beit-base-patch16-224-pt22k-ft22k"
+- DeiT: "facebook/deit-base-distilled-patch16-224"
+- Swin Transformer: "microsoft/swin-base-patch4-window7-224-in22k"
 - Wav2Vec2: "facebook/wav2vec2-large-960h"
-- GenConViT/TimeSformer: As specified in documentation
+- XLSR+SLS: "facebook/wav2vec2-xlsr-53"
+- XLSR-Mamba: "facebook/wav2vec2-xls-r-300m"
+- TCN-Add: "facebook/wav2vec2-base-960h"
+- GenConViT, TimeSformer, SlowFast, Video Swin, X3D: As specified in documentation
 
 ## Implementation Order
 
 1. Initialize repository structure
 2. Implement base detector class
-3. Develop detector modules (image, audio, video)
-4. Create core processing pipeline
-5. Implement file handling utilities
-6. Build UI components
-7. Add model loader and configuration
-8. Create media preprocessing modules
-9. Implement report generation
-10. Integrate all components
-11. Add visualization features
-12. Create application entry point
-13. Implement error handling and logging
+3. Implement ensemble detector framework
+4. Develop image detector modules and ensemble
+5. Develop audio detector modules and ensemble
+6. Develop video detector modules and ensemble
+7. Implement Singularity Mode framework
+8. Create core processing pipeline
+9. Implement file handling and visualization utilities
+10. Build UI components with Singularity Mode selection
+11. Add model loader and configuration
+12. Create media preprocessing modules
+13. Implement report generation
+14. Integrate all components
+15. Create application entry point
+16. Implement error handling and logging
 
 ## Testing Strategy
 
@@ -241,151 +334,7 @@ gradio==3.35.2
 - Verify integration between dependent components
 - Test with valid and invalid inputs
 - Check error handling with edge cases
-
-## Project Knowledge
-
-### Detector Models
-
-#### Image Detector (Vision Transformer)
-- Divides images into fixed-size patches (16×16 pixels)
-- Processes patches through transformer blocks with self-attention
-- Uses classification head for prediction
-- Captures global context across image regions
-- Identifies subtle manipulations in facial features
-
-#### Audio Detector (Wav2Vec2)
-- Accepts raw waveforms via convolutional extraction
-- Uses transformer layers with multi-head self-attention
-- Fine-tuned for deepfake feature detection
-- Sensitive to synthetic speech artifacts
-- Supplements with spectrogram analysis
-
-#### Video Detector (GenConViT/TimeSformer)
-- Performs frame-level analysis with ViT
-- Aggregates temporal features across frames
-- Detects motion artifacts and continuity errors
-- Fuses with audio analysis for synchronization check
-- Generates heatmaps of suspicious regions
-
-## File Content Templates
-
-### base_detector.py
-Must include:
-```python
-from abc import ABC, abstractmethod
-
-class BaseDetector(ABC):
-    def __init__(self, model_name, confidence_threshold=0.5):
-        # Initialize attributes
-        
-    @abstractmethod
-    def detect(self, media_path):
-        # To be implemented by subclasses
-        
-    def normalize_confidence(self, raw_score):
-        # Convert model score to 0-1 range
-        
-    def format_result(self, is_deepfake, confidence, metadata=None):
-        # Return standardized result dict
-```
-
-### processor.py
-Must include:
-```python
-class MediaProcessor:
-    def __init__(self):
-        # Initialize detector registry
-        
-    def register_detector(self, media_type, detector):
-        # Add detector to registry
-        
-    def process(self, media_path):
-        # Identify media type and route to appropriate detector
-        
-    def generate_report(self, result):
-        # Create standardized report from results
-```
-
-### queue_manager.py
-Must include:
-```python
-class QueueManager:
-    def __init__(self, max_workers=2):
-        # Initialize queue and workers
-        
-    def add_task(self, task_type, media_path, priority=1):
-        # Add task to queue
-        
-    def get_task_status(self, task_id):
-        # Return task status
-        
-    def start_workers(self):
-        # Start worker threads
-```
-
-### app.py
-Must include:
-```python
-class DeepfakeDetectionApp:
-    def __init__(self):
-        # Initialize UI components
-        
-    def setup_layout(self):
-        # Create Tron-themed layout
-        
-    def create_tabs(self):
-        # Create image, audio, video tabs
-        
-    def create_upload_component(self, media_type):
-        # Create file upload component
-        
-    def create_results_display(self):
-        # Create visualization components
-```
-
-## Important Implementation Details
-
-1. Always implement proper error handling
-2. Include progress tracking for long operations
-3. Always validate input files before processing
-4. Cache models to avoid reloading
-5. Implement proper resource cleanup
-6. Use consistent result format across all detectors
-7. Apply Tron theme to all UI elements
-
-## Memory Templates
-
-### project_state.json
-```json
-{
-  "last_updated": "2025-04-16T14:30:00",
-  "implemented_files": [
-    {
-      "path": "detectors/base_detector.py",
-      "classes": ["BaseDetector"],
-      "functions": ["normalize_confidence", "format_result"],
-      "imports": ["abc", "typing"],
-      "dependents": []
-    }
-  ]
-}
-```
-
-### task_tracker.json
-```json
-{
-  "tasks": [
-    {
-      "id": 1,
-      "title": "Initialize Repository Structure",
-      "status": "done",
-      "completed_files": ["README.md", "requirements.txt", "config.yaml"]
-    }
-  ]
-}
-```
-
-I'll add a specific section to the .windsurfrule file addressing module name consistency and import path problems:
+- Evaluate Singularity Mode performance
 
 ## Module Name Consistency Rules
 
@@ -436,10 +385,15 @@ def validate_import_path(import_path):
       "functions": ["normalize_confidence", "format_result"],
       "imports": ["abc", "typing"]
     },
-    "detectors.image_detector.vit_detector": {
-      "classes": ["ViTDetector"],
-      "functions": ["detect", "_generate_attention_map"],
-      "imports": ["detectors.base_detector.BaseDetector", "models.model_loader.load_model"]
+    "detectors.ensemble_detector": {
+      "classes": ["EnsembleDetector"],
+      "functions": ["predict", "calibrate_weights", "adaptive_weighting"],
+      "imports": ["numpy", "typing"]
+    },
+    "detectors.image_detector.ensemble": {
+      "classes": ["ImageEnsembleDetector"],
+      "functions": ["predict", "_enhance_with_singularity", "_generate_enhanced_heatmap"],
+      "imports": ["detectors.ensemble_detector.EnsembleDetector", "numpy"]
     }
   }
 }
@@ -464,11 +418,6 @@ For each file implementation, track:
 4. Required import statements for dependencies
 
 This ensures when updating any file, all dependent files can be verified for compatibility.
-
-
-# Bug Fix Instructions for .windsurfrule
-
-Add these rules to your existing .windsurfrule file to address specific errors encountered in the project:
 
 ## Dash Framework Compatibility Rules
 
@@ -594,14 +543,63 @@ def validate_imports():
         raise ImportError(f"Missing required packages: {', '.join(missing)}")
 ```
 
-Add these rules to your .windsurfrule file to help Windsurf avoid and fix these specific errors during project implementation.
+## Memory Templates
+memory/task2_tracker.json
+memory/fix.md
+### project_state.json
+```json
+{
+  "last_updated": "2025-04-17T15:30:00",
+  "implemented_files": [
+    {
+      "path": "detectors/base_detector.py",
+      "classes": ["BaseDetector"],
+      "functions": ["normalize_confidence", "format_result"],
+      "imports": ["abc", "typing"],
+      "dependents": []
+    },
+    {
+      "path": "detectors/ensemble_detector.py",
+      "classes": ["EnsembleDetector"],
+      "functions": ["predict", "calibrate_weights", "adaptive_weighting"],
+      "imports": ["numpy", "typing"],
+      "dependents": ["detectors/image_detector/ensemble.py"]
+    }
+  ]
+}
+```
+
+### task_tracker.json
+```json
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Create Base Ensemble Framework",
+      "status": "done",
+      "completed_files": [
+        "detectors/ensemble_detector.py"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Implement Image Ensemble Detector",
+      "status": "in_progress",
+      "completed_files": []
+    }
+  ]
+}
+```
+
 ## Final Notes
 
-1. Always update memory files after implementing each module
-2. Never skip dependency checks before implementation
-3. Follow the exact repository structure
-4. Verify all imports against implemented files
-5. Maintain consistent naming across the project
-6. Document all implementation details
-7. Use exact model specifications from the Detectors document
-8. Apply the Tron Legacy theme consistently across UI
+1. IMMEDIATELY update memory files after implementing each module
+2. ALWAYS mark tasks as "done" when all requirements are complete
+3. VERIFY all dependencies before starting new tasks
+4. FOLLOW the exact repository structure
+5. VALIDATE all imports against implemented files
+6. MAINTAIN consistent naming across the project
+7. USE the Singularity Mode implementations provided
+8. APPLY the Tron Legacy theme consistently across UI
+9. UPDATE both task_tracker.json and project_state.json together
+10. VERIFY task dependencies are satisfied before marking a task as done

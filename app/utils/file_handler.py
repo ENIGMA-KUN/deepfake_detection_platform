@@ -62,6 +62,9 @@ class FileHandler:
         logger.info(
             f"FileHandler initialized with upload_dir={upload_dir}, "
             f"max_file_size={self.max_file_size/1024/1024:.1f}MB"
+        )
+        
+        try:
             self.upload_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"Upload directory initialized: {self.upload_dir}")
         except Exception as e:

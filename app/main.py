@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from app.interface.app import create_app
 from app.core.processor import MediaProcessor
 from app.utils.logging_utils import setup_logging
+from app.utils.cuda_utils import configure_device_settings
 
 def load_config(config_path: str = None) -> Dict[str, Any]:
     """
@@ -51,6 +52,14 @@ def main():
     
     logger = logging.getLogger(__name__)
     logger.info("Starting Deepfake Detection Platform")
+    
+    # Configure CUDA and device settings
+    cuda_info = configure_device_settings(config)
+    logger.info(f"CUDA available: {cuda_info['cuda_available']}, Device: {cuda_info['device']}")
+    
+    if cuda_info['cuda_available']:
+        for i, gpu_name in enumerate(cuda_info['gpu_names']):
+            logger.info(f"GPU {i}: {gpu_name}")
     
     # Initialize the media processor
     processor = MediaProcessor(config)

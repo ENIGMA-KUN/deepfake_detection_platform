@@ -24,8 +24,11 @@
     "detectors/image_detector/vit_detector.py",
     "detectors/audio_detector/__init__.py",
     "detectors/audio_detector/wav2vec_detector.py",
+    "detectors/audio_detector/xlsr_detector.py",
+    "detectors/audio_detector/ensemble.py",
     "detectors/video_detector/__init__.py",
     "detectors/video_detector/genconvit.py",
+    "detectors/video_detector/ensemble.py",
     "models/__init__.py",
     "models/model_loader.py",
     "data/__init__.py",
@@ -34,7 +37,13 @@
     "data/preprocessing/audio_prep.py",
     "data/preprocessing/video_prep.py",
     "data/augmentation/__init__.py",
-    "tests/__init__.py"
+    "tests/__init__.py",
+    "tests/run_image_test.py",
+    "tests/run_audio_test.py",
+    "tests/run_video_test.py",
+    "tests/image_model_test.ipynb",
+    "tests/video_model_test.ipynb",
+    "tests/create_video_model_notebook.py"
   ],
   "directory_structure": {
     "app": {
@@ -69,5 +78,5 @@
       "implementations": {}
     }
   },
-  "last_updated": "2025-04-16T11:50:55-07:00"
+  "last_updated": "2025-04-21T22:21:17-07:00"
 }
