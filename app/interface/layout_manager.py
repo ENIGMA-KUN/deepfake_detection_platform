@@ -12,6 +12,7 @@ from app.interface.components.audio_tab import create_audio_tab
 from app.interface.components.video_tab import create_video_tab
 from app.interface.components.reports_tab import create_reports_tab
 from app.interface.components.about_tab import create_about_tab
+from app.interface.components.settings_tab import create_settings_tab
 from app.utils.visualization import VisualizationManager
 
 def create_app_layout(app, processor, config):
@@ -39,6 +40,7 @@ def create_app_layout(app, processor, config):
     video_tab = create_video_tab(app)
     reports_tab = create_reports_tab(app, visualizer)
     about_tab = create_about_tab(app)
+    settings_tab = create_settings_tab(app)
     
     # Define the overall layout
     layout = html.Div([
@@ -104,6 +106,15 @@ def create_app_layout(app, processor, config):
                         className="custom-tab",
                         selected_className="custom-tab-selected",
                         children=reports_tab
+                    ),
+                    
+                    # Settings tab
+                    dcc.Tab(
+                        label="SETTINGS",
+                        value="settings-tab",
+                        className="custom-tab",
+                        selected_className="custom-tab-selected",
+                        children=settings_tab
                     ),
                     
                     # About tab

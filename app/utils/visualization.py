@@ -118,59 +118,108 @@ class VisualizationManager:
         is_deepfake = detection_result.get("is_deepfake", False)
         confidence = detection_result.get("confidence", 0.0)
         
-        banner_color = self.colors["deepfake"] if is_deepfake else self.colors["authentic"]
-        banner_text = "DEEPFAKE DETECTED" if is_deepfake else "AUTHENTIC"
+        # Draw face bounding boxes if available
+        if 'faces' in detection_result and detection_result['faces']:
+            for face in detection_result['faces']:
+                x, y, w, h = face['bbox']
+                # Use green color for bounding box
+                color = (0, 255, 0)  # RGB
+                box_width = 2
+                
+                # Draw rectangle
+                draw.rectangle([(x, y), (x + w, y + h)], outline=color, width=box_width)
+                
+                # Draw confidence score if available for this face
+                if 'confidence' in face and face['confidence'] is not None:
+                    conf_text = f"{face['confidence']:.2f}"
+                    # Draw with background for better visibility
+                    text_w, text_h = draw.textsize(conf_text, font=small_font)
+                    draw.rectangle([(x, y - text_h - 4), (x + text_w + 4, y - 2)], 
+                                  fill=(0, 0, 0, 180))
+                    draw.text((x + 2, y - text_h - 2), conf_text, fill=color, font=small_font)
         
-        # Draw top banner
-        banner_height = 30
-        draw.rectangle([(0, 0), (width, banner_height)], fill=banner_color)
-        text_width = draw.textlength(banner_text, font=font)
-        draw.text(
-            ((width - text_width) // 2, 5),
-            banner_text,
-            fill="#FFFFFF",
-            font=font
-        )
+        # Add banner with overall detection result
+        result_text = "DEEPFAKE DETECTED" if is_deepfake else "AUTHENTIC IMAGE"
+        result_color = self.colors["deepfake"] if is_deepfake else self.colors["authentic"]
         
-        # Draw confidence text
-        conf_text = f"Confidence: {confidence:.2f}"
-        draw.text(
-            (10, banner_height + 10),
-            conf_text,
-            fill=banner_color,
-            font=small_font
-        )
-        
-        # Draw face boxes if available
-        if "details" in detection_result:
-            details = detection_result["details"]
+        # Convert hex color to RGB tuple if needed
+        if result_color.startswith('#'):
+            result_color = tuple(int(result_color[i:i+2], 16) for i in (1, 3, 5))
             
-            # Check if there are face results
-            if "face_results" in details:
-                for face in details["face_results"]:
-                    # Draw bounding box
-                    if "bounding_box" in face:
-                        bbox = face["bounding_box"]
-                        x1, y1, x2, y2 = bbox[:4]
-                        
-                        face_conf = face.get("confidence", 0.0)
-                        bbox_color = self._get_confidence_color(face_conf)
-                        
-                        # Draw rectangle
-                        draw.rectangle(
-                            [(x1, y1), (x2, y2)],
-                            outline=bbox_color,
-                            width=2
-                        )
-                        
-                        # Draw confidence text
-                        face_text = f"{face_conf:.2f}"
-                        draw.text(
-                            (x1 + 5, y1 + 5),
-                            face_text,
-                            fill=bbox_color,
-                            font=small_font
-                        )
+        # Draw semi-transparent banner at the top
+        banner_height = 40
+        overlay = Image.new('RGBA', (width, banner_height), (0, 0, 0, 180))
+        img.paste(overlay, (0, 0), overlay)
+        
+        # Draw text on banner
+        confidence_text = f"Confidence: {confidence:.1%}"
+        draw.text((10, 10), result_text, fill=result_color, font=font)
+        draw.text((width - 150, 10), confidence_text, fill="white", font=font)
+        
+        return img
+    
+    def create_face_bounding_box_overlay(self, image: Union[str, np.ndarray, Image.Image], 
+                                       face_detections: List[Dict[str, Any]],
+                                       box_color: Tuple[int, int, int] = (0, 255, 0),
+                                       line_width: int = 2) -> Image.Image:
+        """
+        Create an overlay with face bounding boxes on an image.
+        
+        Args:
+            image: Image file path, numpy array, or PIL Image
+            face_detections: List of face detection dictionaries, each with 'bbox' key
+            box_color: RGB color tuple for bounding boxes
+            line_width: Width of bounding box lines
+            
+        Returns:
+            PIL Image with face bounding boxes drawn
+        """
+        # Load image if needed
+        if isinstance(image, str):
+            img = Image.open(image).convert("RGB")
+        elif isinstance(image, np.ndarray):
+            img = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        elif isinstance(image, Image.Image):
+            img = image.copy()
+        else:
+            raise ValueError("Unsupported image type")
+        
+        # Create a draw object
+        draw = ImageDraw.Draw(img)
+        
+        # Try to load a font, use default if unable
+        try:
+            font = ImageFont.truetype("arial.ttf", 14)
+        except IOError:
+            font = ImageFont.load_default()
+        
+        # Draw boxes around each face
+        for face in face_detections:
+            if 'bbox' not in face:
+                continue
+                
+            x, y, w, h = face['bbox']
+            
+            # Draw rectangle
+            draw.rectangle([(x, y), (x + w, y + h)], outline=box_color, width=line_width)
+            
+            # Draw confidence score if available
+            if 'confidence' in face and face['confidence'] is not None:
+                conf_text = f"{face['confidence']:.2f}"
+                # Draw with background for better visibility
+                text_w, text_h = font.getsize(conf_text) if hasattr(font, 'getsize') else draw.textbbox((0, 0), conf_text, font=font)[2:4]
+                draw.rectangle([(x, y - text_h - 4), (x + text_w + 4, y - 2)], 
+                             fill=(0, 0, 0, 180))
+                draw.text((x + 2, y - text_h - 2), conf_text, fill=box_color, font=font)
+                
+            # If landmarks available, draw them
+            if 'landmarks' in face and face['landmarks'] is not None:
+                landmarks = face['landmarks']
+                for point in landmarks:
+                    if isinstance(point, tuple) and len(point) == 2:
+                        px, py = point
+                        # Draw a small circle for each landmark
+                        draw.ellipse([(px-2, py-2), (px+2, py+2)], fill=box_color)
         
         return img
     

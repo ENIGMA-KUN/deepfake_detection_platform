@@ -84,6 +84,9 @@ class AudioEnsembleDetector(EnsembleDetector):
         
         return result
     
+    # Alias to keep interface consistent with BaseDetector
+    detect = predict
+    
     def _enhance_with_singularity(self, audio, result):
         """
         Apply Acoustic Guardian Singularity Mode enhancement to the result.

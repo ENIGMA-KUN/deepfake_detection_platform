@@ -16,6 +16,14 @@ general:
   mixed_precision: true
   distributed_training: false
 
+# API Keys for premium features
+api_keys:
+  huggingface: ""  # Add your HuggingFace API key here for premium models
+  swin: ""         # API key for Swin models (premium)
+  xlsr_mamba: ""   # API key for XLSR-Mamba models (premium)
+  timesformer: ""  # API key for TimeSformer models (premium)
+  video_swin: ""   # API key for Video-Swin models (premium)
+
 # Model settings
 models:
   image:

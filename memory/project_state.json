@@ -29,6 +29,7 @@
     "detectors/video_detector/__init__.py",
     "detectors/video_detector/genconvit.py",
     "detectors/video_detector/ensemble.py",
+    "detectors/video_detector/timesformer.py",
     "models/__init__.py",
     "models/model_loader.py",
     "data/__init__.py",
@@ -78,5 +79,5 @@
       "implementations": {}
     }
   },
-  "last_updated": "2025-04-21T22:21:17-07:00"
+  "last_updated": "2025-04-22T14:20:00-07:00"
 }
