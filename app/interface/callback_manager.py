@@ -152,14 +152,19 @@ def register_image_callbacks(app):
         Output('image-results-container', 'children'),
         [Input('analyze-image-button', 'n_clicks')],
         [State('image-model-select', 'value'),
-         State('image-confidence-threshold-slider', 'value')],
+         State('image-confidence-threshold-slider', 'value'),
+         State('image-analysis-mode', 'value')],
         prevent_initial_call=True
     )
-    def analyze_image(n_clicks, model_name, confidence_threshold):
+    def analyze_image(n_clicks, model_name, confidence_threshold, analysis_mode):
         if n_clicks is None or not hasattr(app, 'uploaded_image'):
             return html.P("Upload and analyze an image to see results.")
         
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Analyze image called: model={model_name}, threshold={confidence_threshold}, mode={analysis_mode}")
+            
             # Show loading state first
             loading_div = html.Div([
                 html.Div(className="d-flex justify-content-center", children=[
@@ -182,19 +187,37 @@ def register_image_callbacks(app):
             with open(temp_file_path, 'wb') as f:
                 f.write(decoded_content)
             
-            # Process the image using the MediaProcessor
+            # Configure model parameters based on the selected options
             model_params = {
                 'model_name': model_name,
-                'confidence_threshold': confidence_threshold  # Already in decimal format (0.5-0.95)
+                'confidence_threshold': confidence_threshold
             }
+            
+            # Apply analysis mode settings
+            if analysis_mode == "deep" or analysis_mode == "singularity":
+                # For deep analysis, always use the ensemble with all models
+                model_params['model_name'] = 'ensemble'
+                
+                # For singularity mode, enable advanced features
+                if analysis_mode == "singularity":
+                    model_params['enable_singularity'] = True
+            
+            logger.info(f"Calling detect_media with params: {model_params}")
             
             # Call the backend processor to analyze the image
             result = app._processor.detect_media(temp_file_path, 'image', model_params)
+            logger.info(f"Detection result: {result}")
             
             # Get results
-            is_deepfake = result['is_deepfake']
-            confidence = result['confidence'] * 100  # Convert to percentage
-            details = result.get('details', {})
+            is_deepfake = result.get('is_deepfake', False)
+            confidence = result.get('confidence', 0.5) * 100  # Convert to percentage
+            
+            # Get details from result metadata
+            metadata = result.get('metadata', {})
+            details = {}
+            for key, value in metadata.items():
+                if isinstance(value, (str, int, float, bool)) and key not in ['timestamp']:
+                    details[key] = value
             
             # Create the visualization if available
             visualization = None
@@ -204,6 +227,10 @@ def register_image_callbacks(app):
                     style={'max-width': '100%'},
                     className="d-block mx-auto mb-3 mt-3"
                 )
+            
+            # Get model consensus information
+            model_consensus = result.get('model_consensus', '0/0')
+            logger.info(f"Model consensus: {model_consensus}")
             
             # Create the result div
             result_div = html.Div([
@@ -236,9 +263,13 @@ def register_image_callbacks(app):
                     html.H6("Analysis Details:", className="mb-2"),
                     html.Ul([
                         html.Li(f"{key}: {value}") for key, value in details.items()
-                    ]),
-                    html.P(f"Used model: {result['model']}, Threshold: {result['threshold']:.2f}"),
-                    html.P(f"Analysis time: {result['analysis_time']:.2f} seconds")
+                    ] if details else [html.Li("No detailed metadata available")]),
+                    html.P(f"Used model: {result.get('model', 'unknown')}" + 
+                          (f" (ensemble of {result.get('model_count', 0)} models)" if result.get('ensemble', False) else "") + 
+                          f", Threshold: {result.get('threshold', 0.5):.2f}"),
+                    html.P(f"Analysis time: {result.get('analysis_time', 0):.2f} seconds"),
+                    html.P(f"Analysis mode: {analysis_mode.title()}"),
+                    html.P(f"Model consensus: {model_consensus}")
                 ]),
                 
                 # Report button
@@ -250,7 +281,7 @@ def register_image_callbacks(app):
                 ])
             ])
             
-            # Save the result for the report
+            # Save the result for the report and detailed analysis panel
             if not hasattr(app, 'analysis_results'):
                 app.analysis_results = {}
             app.analysis_results['image'] = result
@@ -259,8 +290,10 @@ def register_image_callbacks(app):
             
         except Exception as e:
             import traceback
+            logger.error(f"Error analyzing image: {str(e)}")
+            logger.error(traceback.format_exc())
             return html.Div([
-                html.H5("Error analyzing image"),
+                html.H5("Error analyzing image", className="text-danger"),
                 html.P(str(e), className="text-danger"),
                 html.Pre(traceback.format_exc(), className="text-danger small")
             ])

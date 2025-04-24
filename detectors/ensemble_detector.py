@@ -152,6 +152,8 @@ class EnsembleDetector:
 
 # detectors/image_detector/ensemble.py
 import numpy as np
+from PIL import Image
+import logging
 
 class ImageEnsembleDetector:
     """Ensemble detector for image deepfakes with Singularity Mode support."""
@@ -212,6 +214,9 @@ class ImageEnsembleDetector:
         Returns:
             Dict containing prediction results
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Get basic ensemble prediction
         result = self._predict(image)
         
@@ -224,6 +229,64 @@ class ImageEnsembleDetector:
         
         return result
     
+    def detect(self, media_path):
+        """
+        Detect whether image is authentic or deepfake.
+        This method provides compatibility with the processor's expected interface.
+        
+        Args:
+            media_path: Path to the image file
+            
+        Returns:
+            Dict containing detection results
+        """
+        # Check if media_path is already a result dict from another detector
+        if isinstance(media_path, dict):
+            return media_path
+            
+        # Load the image
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"ImageEnsembleDetector.detect called with path: {media_path}")
+            
+            image = Image.open(media_path).convert('RGB')
+            logger.info(f"Image loaded successfully: {image.size}")
+            
+            # Convert to numpy array for processing
+            image_np = np.array(image)
+            
+            # Call the predict method which contains the actual implementation
+            result = self.predict(image_np)
+            
+            # Ensure the result contains all expected fields for the UI
+            if 'individual_results' in result:
+                # Count how many individual models detected it as deepfake
+                deepfake_count = sum(1 for model_result in result['individual_results'] 
+                                  if model_result.get('confidence', 0) > self.threshold)
+                total_models = len(result['individual_results'])
+                
+                # Add model consensus to the result
+                result['model_consensus'] = f"{deepfake_count}/{total_models}"
+                logger.info(f"Model consensus: {result['model_consensus']}")
+            
+            # Log the result
+            logger.info(f"Detection result: is_deepfake={result.get('is_deepfake')}, confidence={result.get('confidence')}")
+            return result
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in ImageEnsembleDetector.detect: {str(e)}")
+            
+            # Return fallback result on error
+            return {
+                "is_deepfake": False,
+                "confidence": 0.5,
+                "error": str(e),
+                "fallback": True
+            }
+    
     def _predict(self, media):
         """
         Predict whether media is authentic or deepfake using ensemble voting.
@@ -234,76 +297,226 @@ class ImageEnsembleDetector:
         Returns:
             Dict containing prediction results
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Get predictions from all detectors
         predictions = []
-        for detector in self.detectors:
-            pred = detector.predict(media)
-            predictions.append(pred)
+        individual_results = []
         
-        # Extract confidence scores
-        confidence_scores = [detector.get_confidence(pred) for detector, pred in zip(self.detectors, predictions)]
+        logger.info(f"Running ensemble with {len(self.detectors)} detectors")
+        
+        for i, detector in enumerate(self.detectors):
+            try:
+                # Get detector type name
+                detector_type = detector.__class__.__name__
+                detector_name = getattr(detector, 'model_name', detector_type)
+                logger.info(f"Running detector {i+1}/{len(self.detectors)}: {detector_name}")
+                
+                # Run the detector
+                pred = detector.predict(media)
+                predictions.append(pred)
+                
+                # Get confidence score
+                confidence = pred.get('confidence', 0.5)
+                is_deepfake = confidence > self.threshold
+                
+                # Store individual result
+                individual_results.append({
+                    'model': detector_name,
+                    'confidence': confidence,
+                    'weight': self.weights[i],
+                    'is_deepfake': is_deepfake
+                })
+                
+                logger.info(f"Detector {detector_name} result: confidence={confidence}, is_deepfake={is_deepfake}")
+                
+            except Exception as e:
+                logger.error(f"Error running detector {i}: {str(e)}")
+                # Add a dummy result if a detector fails
+                individual_results.append({
+                    'model': f"Detector {i}",
+                    'confidence': 0.5,
+                    'weight': self.weights[i],
+                    'is_deepfake': False,
+                    'error': str(e)
+                })
         
         # Calculate weighted average confidence
-        weighted_confidence = sum(w * c for w, c in zip(self.weights, confidence_scores))
+        if not individual_results:
+            logger.warning("No detector results available, using fallback")
+            weighted_confidence = 0.5
+        else:
+            weighted_confidence = sum(r['confidence'] * r['weight'] for r in individual_results)
+            logger.info(f"Calculated weighted confidence: {weighted_confidence}")
         
         # Determine if deepfake based on threshold
         is_deepfake = weighted_confidence > self.threshold
+        logger.info(f"Final ensemble decision: is_deepfake={is_deepfake} (threshold={self.threshold})")
         
         # Combine results
         result = {
             'is_deepfake': is_deepfake,
             'confidence': weighted_confidence,
-            'individual_results': [
-                {
-                    'model': detector.name,
-                    'confidence': score,
-                    'weight': weight,
-                    'raw_prediction': pred
-                }
-                for detector, score, weight, pred in zip(
-                    self.detectors, confidence_scores, self.weights, predictions
-                )
-            ]
+            'individual_results': individual_results,
+            'metadata': {
+                'ensemble_size': len(self.detectors),
+                'threshold': self.threshold,
+                'detection_time_ms': 0  # Will be updated by processor
+            }
         }
         
-        # Add visualization data (to be implemented by subclasses)
-        result.update(self._get_visualization_data(predictions))
+        # Add visualization data
+        vis_data = self._get_visualization_data(predictions)
+        if vis_data:
+            if 'metadata' in vis_data:
+                result['metadata'].update(vis_data['metadata'])
+            
+            # Generate heatmap visualization if we have the image data
+            if isinstance(media, np.ndarray) and self.enable_singularity:
+                visualization = self._generate_heatmap(media, predictions)
+                if visualization:
+                    result['visualization'] = visualization
+                    logger.info("Added heatmap visualization to result")
+        
+        # Apply Singularity Mode enhancements if enabled
+        if self.enable_singularity and isinstance(media, np.ndarray):
+            logger.info("Applying Singularity Mode enhancements")
+            result = self._enhance_with_singularity(media, result)
+            
+            # Update the visualization with enhanced data
+            enhanced_visualization = self._generate_heatmap(media, predictions)
+            if enhanced_visualization:
+                result['visualization'] = enhanced_visualization
+                logger.info("Updated visualization with Singularity enhancements")
         
         return result
     
     def _get_visualization_data(self, predictions):
         """
-        Generate visualization data from predictions.
+        Extract and combine visualization data from predictions.
         
         Args:
-            predictions: List of prediction results from individual detectors
+            predictions: List of predictions from individual detectors
             
         Returns:
-            Dict with visualization data
+            Dict containing visualization data
         """
-        # Extract heatmaps from predictions (if available)
-        heatmaps = []
-        for pred in predictions:
-            if 'heatmap' in pred and pred['heatmap'] is not None:
-                heatmaps.append(pred['heatmap'])
+        import logging
+        import numpy as np
         
-        if not heatmaps:
-            return {'heatmap': None}
+        logger = logging.getLogger(__name__)
+        logger.info("Generating visualization data for ensemble detector")
         
-        # Ensure all heatmaps have the same shape
-        # In practice, you might need to resize them
-        
-        # Combine heatmaps with weights
-        combined_heatmap = np.zeros_like(heatmaps[0])
-        for i, heatmap in enumerate(heatmaps):
-            weight = self.weights[i]
-            combined_heatmap += heatmap * weight
+        try:
+            # Check if any predictions contain attention maps
+            attention_maps = []
+            for i, pred in enumerate(predictions):
+                if isinstance(pred, dict) and 'metadata' in pred and 'attention_map' in pred['metadata']:
+                    map_data = pred['metadata']['attention_map']
+                    if isinstance(map_data, list):
+                        attention_maps.append((self.weights[i], np.array(map_data)))
+                        logger.info(f"Found attention map in detector {i} with weight {self.weights[i]}")
             
-        # Normalize combined heatmap to [0, 1] range
-        if np.max(combined_heatmap) > 0:
-            combined_heatmap = combined_heatmap / np.max(combined_heatmap)
+            # If we have attention maps, combine them
+            if attention_maps:
+                # Initialize combined map with zeros based on first map shape
+                combined_map = np.zeros_like(attention_maps[0][1])
+                total_weight = 0
+                
+                # Weighted average of attention maps
+                for weight, att_map in attention_maps:
+                    # Ensure shapes match
+                    if att_map.shape != combined_map.shape:
+                        logger.warning(f"Attention map shape mismatch: {att_map.shape} vs {combined_map.shape}, skipping")
+                        continue
+                    
+                    combined_map += weight * att_map
+                    total_weight += weight
+                
+                # Normalize by total weight
+                if total_weight > 0:
+                    combined_map /= total_weight
+                
+                # Include in visualization data
+                logger.info(f"Generated combined attention map with shape: {combined_map.shape}")
+                return {
+                    'metadata': {
+                        'attention_map': combined_map.tolist(),
+                    }
+                }
             
-        return {'heatmap': combined_heatmap}
+            # If no attention maps, return empty dict
+            return {}
+        
+        except Exception as e:
+            logger.error(f"Error generating visualization data: {str(e)}")
+            return {}
+            
+    def _generate_heatmap(self, image, predictions):
+        """
+        Generate a heatmap visualization of the ensemble prediction.
+        
+        Args:
+            image: Original image
+            predictions: List of predictions from individual detectors
+            
+        Returns:
+            Base64 encoded heatmap image or None if visualization fails
+        """
+        import logging
+        import numpy as np
+        from PIL import Image
+        import base64
+        import io
+        
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Get the visualization manager
+            from app.utils.visualization import VisualizationManager
+            vis_manager = VisualizationManager()
+            
+            # Get attention map data from predictions
+            attention_map = None
+            vis_data = self._get_visualization_data(predictions)
+            
+            if 'metadata' in vis_data and 'attention_map' in vis_data['metadata']:
+                attention_map = np.array(vis_data['metadata']['attention_map'])
+                logger.info(f"Using attention map with shape {attention_map.shape} for heatmap")
+            else:
+                # If no attention map available, create a simple one based on confidence scores
+                # This is a fallback that creates a centered attention map
+                logger.info("No attention map available, creating synthetic heatmap")
+                h, w = image.shape[:2] if isinstance(image, np.ndarray) else (224, 224)
+                x, y = np.meshgrid(np.linspace(-1, 1, w), np.linspace(-1, 1, h))
+                d = np.sqrt(x*x + y*y)
+                sigma = 0.5
+                attention_map = np.exp(-((d)**2 / (2.0 * sigma**2)))
+            
+            # Generate heatmap
+            if isinstance(image, np.ndarray):
+                pil_image = Image.fromarray(image)
+            elif isinstance(image, Image.Image):
+                pil_image = image
+            else:
+                logger.warning("Image type not recognized, cannot generate heatmap")
+                return None
+            
+            # Create heatmap overlay
+            heatmap_img = vis_manager.create_heatmap_overlay(pil_image, attention_map, alpha=0.7)
+            
+            # Convert to base64
+            buffered = io.BytesIO()
+            heatmap_img.save(buffered, format="PNG")
+            base64_str = base64.b64encode(buffered.getvalue()).decode()
+            
+            logger.info("Successfully generated heatmap visualization")
+            return base64_str
+            
+        except Exception as e:
+            logger.error(f"Error generating heatmap: {str(e)}")
+            return None
     
     def _enhance_with_singularity(self, image, result):
         """
@@ -653,6 +866,37 @@ class AudioEnsembleDetector:
             result = self._enhance_with_singularity(audio, result)
         
         return result
+    
+    def detect(self, media_path):
+        """
+        Detect whether audio is authentic or deepfake.
+        This method provides compatibility with the processor's expected interface.
+        
+        Args:
+            media_path: Path to the audio file
+            
+        Returns:
+            Dict containing detection results
+        """
+        # Check if media_path is already a result dict from another detector
+        if isinstance(media_path, dict):
+            return media_path
+            
+        try:
+            # Call the predict method which contains the actual implementation
+            return self.predict(media_path)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in AudioEnsembleDetector.detect: {str(e)}")
+            
+            # Return fallback result on error
+            return {
+                "is_deepfake": False,
+                "confidence": 0.5,
+                "error": str(e),
+                "fallback": True
+            }
     
     def _predict(self, media):
         """
@@ -1219,6 +1463,37 @@ class VideoEnsembleDetector:
             result = self._enhance_with_singularity(video_path, result)
         
         return result
+    
+    def detect(self, media_path):
+        """
+        Detect whether video is authentic or deepfake.
+        This method provides compatibility with the processor's expected interface.
+        
+        Args:
+            media_path: Path to the video file
+            
+        Returns:
+            Dict containing detection results
+        """
+        # Check if media_path is already a result dict from another detector
+        if isinstance(media_path, dict):
+            return media_path
+            
+        try:
+            # Call the predict method which contains the actual implementation
+            return self.predict(media_path)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error in VideoEnsembleDetector.detect: {str(e)}")
+            
+            # Return fallback result on error
+            return {
+                "is_deepfake": False,
+                "confidence": 0.5,
+                "error": str(e),
+                "fallback": True
+            }
     
     def _enhance_with_singularity(self, video_path, result):
         """
